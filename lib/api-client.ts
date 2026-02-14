@@ -383,7 +383,7 @@ class ApiClient {
     try { return await this.get('/api/evolution/history'); } catch { return []; }
   }
 
-  async applyEvolution(body: { strategy: string; parameter: string; value: any }): Promise<{ success: boolean; message: string }> {
+  async applyEvolution(body: { strategy: string; parameter: string; new_value: any }): Promise<{ success: boolean; message: string }> {
     return this.post('/api/evolution/apply', body);
   }
 
@@ -422,11 +422,11 @@ class ApiClient {
   }
 
   async getPendingOrders(): Promise<PendingOrder[]> {
-    try { return await this.get('/api/pending-orders'); } catch { return []; }
+    try { return await this.get('/api/orders/pending'); } catch { return []; }
   }
 
   async getOrderHistory(): Promise<OrderEvent[]> {
-    try { return await this.get('/api/order-history'); } catch { return []; }
+    try { return await this.get('/api/orders/history'); } catch { return []; }
   }
 
   // --- 외부 계좌 ---
@@ -544,21 +544,36 @@ class SSEClient {
     }
   }
 
+  private pollCount = 0;
+
   private startPolling(_baseUrl: string) {
     const poll = async () => {
       if (!this.isRunning) return;
+      this.pollCount++;
       try {
-        const [portfolio, status, positions, risk] = await Promise.allSettled([
+        const [portfolio, status, positions, risk, events, pendingOrders] = await Promise.allSettled([
           apiClient.getPortfolio(),
           apiClient.getStatus(),
           apiClient.getPositions(),
           apiClient.getRisk(),
+          apiClient.getEvents(),
+          apiClient.getPendingOrders(),
         ]);
 
         if (portfolio.status === 'fulfilled') this.emit({ type: 'portfolio', data: portfolio.value });
         if (status.status === 'fulfilled') this.emit({ type: 'status', data: status.value });
         if (positions.status === 'fulfilled') this.emit({ type: 'positions', data: positions.value });
         if (risk.status === 'fulfilled') this.emit({ type: 'risk', data: risk.value });
+        if (events.status === 'fulfilled') this.emit({ type: 'events', data: events.value });
+        if (pendingOrders.status === 'fulfilled') this.emit({ type: 'pending_orders', data: pendingOrders.value });
+
+        // 외부 계좌는 10회(30초)마다 갱신
+        if (this.pollCount % 10 === 0) {
+          try {
+            const accounts = await apiClient.getExternalAccounts();
+            this.emit({ type: 'external_accounts', data: accounts });
+          } catch {}
+        }
       } catch {
         // 폴링 실패 무시 — 다음 주기에 재시도
       }

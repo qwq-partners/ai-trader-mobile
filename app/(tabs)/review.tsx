@@ -393,7 +393,7 @@ function ParameterRecommendations({ recommendations, colors }: {
               const result = await apiClient.applyEvolution({
                 strategy: rec.strategy,
                 parameter: rec.parameter,
-                value: rec.suggested_value,
+                new_value: rec.suggested_value,
               });
               if (result.success) {
                 Alert.alert('성공', result.message || '파라미터가 적용되었습니다.');

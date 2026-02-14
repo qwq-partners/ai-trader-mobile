@@ -248,20 +248,22 @@ function StatsSummary({ stats }: { stats: TradeStats | null }) {
   );
 }
 
-function StrategyCards({ stats }: { stats: TradeStats | null }) {
+function StrategyCards({ stats, isDemo }: { stats: TradeStats | null; isDemo: boolean }) {
   const colors = useColors();
 
-  const strategies = stats
-    ? Object.entries(stats.by_strategy).map(([name, data]) => ({
-        name,
-        total: data.total,
-        wins: data.wins,
-        losses: data.losses,
-        win_rate: data.win_rate,
-        total_pnl: data.total_pnl,
-        avg_pnl: data.avg_pnl,
-      }))
-    : DEMO_STRATEGIES;
+  const strategies = isDemo
+    ? DEMO_STRATEGIES
+    : stats
+      ? Object.entries(stats.by_strategy).map(([name, data]) => ({
+          name,
+          total: data.total,
+          wins: data.wins,
+          losses: data.losses,
+          win_rate: data.win_rate,
+          total_pnl: data.total_pnl,
+          avg_pnl: data.avg_pnl,
+        }))
+      : [];
 
   const STRATEGY_LABELS: Record<string, string> = {
     MOMENTUM_BREAKOUT: '모멘텀 돌파',
@@ -396,7 +398,7 @@ function AnalysisView() {
         </View>
       </View>
 
-      <StrategyCards stats={stats} />
+      <StrategyCards stats={stats} isDemo={state.isDemo} />
     </View>
   );
 }

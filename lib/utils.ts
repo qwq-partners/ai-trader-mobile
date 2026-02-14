@@ -3,10 +3,8 @@ export function cn(...classes: (string | undefined | null | false)[]): string {
   return classes.filter(Boolean).join(' ');
 }
 
-// 숫자 포맷 (K, M, B)
+// 숫자 포맷 (한국식: 억/만)
 export function formatCompactNumber(n: number): string {
-  if (Math.abs(n) >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
-  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (Math.abs(n) >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}억`;
   if (Math.abs(n) >= 10_000) return `${Math.round(n / 10_000).toLocaleString()}만`;
   return n.toLocaleString();
