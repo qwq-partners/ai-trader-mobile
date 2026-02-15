@@ -39,8 +39,8 @@ function PortfolioHero({ portfolio, colors }: { portfolio: PortfolioData | null;
   const totalEquity = portfolio.total_equity;
   const dailyPnl = portfolio.daily_pnl;
   const dailyPnlPct = portfolio.daily_pnl_pct;
-  const cashBalance = portfolio.cash_balance;
-  const investedAmount = portfolio.invested_amount;
+  const cashBalance = portfolio.cash;
+  const investedAmount = portfolio.total_position_value;
   const totalAmount = cashBalance + investedAmount;
   const cashPct = totalAmount > 0 ? Math.round((cashBalance / totalAmount) * 100) : 0;
   const investPct = 100 - cashPct;
@@ -106,10 +106,11 @@ function RiskGauge({ risk, status, colors }: { risk: RiskData | null; status: St
   if (!risk || !status) return null;
 
   const dailyUsedPct = risk.daily_loss_limit_pct !== 0
-    ? Math.min(100, Math.max(0, Math.abs(risk.daily_pnl_pct / risk.daily_loss_limit_pct) * 100))
+    ? Math.min(100, Math.max(0, Math.abs(risk.daily_loss_pct / risk.daily_loss_limit_pct) * 100))
     : 0;
-  const tradingColor = status.trading_enabled ? colors.success : colors.error;
-  const tradingText = status.trading_enabled ? '거래가능' : '중단';
+  const canTrade = risk.can_trade && status.running && !status.engine?.paused;
+  const tradingColor = canTrade ? colors.success : colors.error;
+  const tradingText = canTrade ? '거래가능' : '중단';
 
   return (
     <View style={{
@@ -127,7 +128,7 @@ function RiskGauge({ risk, status, colors }: { risk: RiskData | null; status: St
       }}>
         <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>일일손실</Text>
         <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
-          {formatPct(risk.daily_pnl_pct)} / {formatPct(risk.daily_loss_limit_pct, false)}
+          {formatPct(risk.daily_loss_pct)} / {formatPct(risk.daily_loss_limit_pct, false)}
         </Text>
         <View style={{
           height: 3,
@@ -174,23 +175,24 @@ function RiskGauge({ risk, status, colors }: { risk: RiskData | null; status: St
 }
 
 const EXIT_STATE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  MONITORING: { bg: 'rgba(148,163,184,0.15)', text: '#94a3b8', label: '모니터링' },
-  BREAKEVEN: { bg: 'rgba(96,165,250,0.15)', text: '#60a5fa', label: '본전이동' },
-  TRAILING: { bg: 'rgba(52,211,153,0.15)', text: '#34d399', label: '트레일링' },
-  FIRST_EXIT: { bg: 'rgba(167,139,250,0.15)', text: '#a78bfa', label: '1차익절' },
+  none: { bg: 'rgba(148,163,184,0.15)', text: '#94a3b8', label: '대기' },
+  monitoring: { bg: 'rgba(148,163,184,0.15)', text: '#94a3b8', label: '모니터링' },
+  breakeven: { bg: 'rgba(96,165,250,0.15)', text: '#60a5fa', label: '본전이동' },
+  trailing: { bg: 'rgba(52,211,153,0.15)', text: '#34d399', label: '트레일링' },
+  first_exit: { bg: 'rgba(167,139,250,0.15)', text: '#a78bfa', label: '1차익절' },
+};
+
+const STRATEGY_LABELS: Record<string, string> = {
+  momentum_breakout: '모멘텀',
+  sepa_trend: 'SEPA',
+  theme_chasing: '테마',
+  gap_and_go: '갭상승',
 };
 
 function PositionCard({ position, onPress, colors }: { position: PositionData; onPress: () => void; colors: ThemeColors }) {
   const pnlColor = position.unrealized_pnl >= 0 ? colors.profit : colors.loss;
-  const exitState = EXIT_STATE_COLORS[position.exit_state || 'MONITORING'] || EXIT_STATE_COLORS.MONITORING;
-
-  // 전략명 간소화
-  const strategyLabel: Record<string, string> = {
-    MOMENTUM_BREAKOUT: '모멘텀',
-    SEPA_TREND: 'SEPA',
-    THEME_CHASING: '테마',
-    GAP_AND_GO: '갭상승',
-  };
+  const exitStage = position.exit_state?.stage || 'none';
+  const exitState = EXIT_STATE_COLORS[exitStage] || EXIT_STATE_COLORS.none;
 
   return (
     <TouchableOpacity
@@ -218,7 +220,7 @@ function PositionCard({ position, onPress, colors }: { position: PositionData; o
             backgroundColor: colors.elevated,
           }}>
             <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}>
-              {strategyLabel[position.strategy] || position.strategy}
+              {STRATEGY_LABELS[position.strategy || ''] || position.strategy || '-'}
             </Text>
           </View>
         </View>
@@ -335,7 +337,11 @@ function ExternalAccountsSection({ accounts, colors }: { accounts: ExternalAccou
       </TouchableOpacity>
 
       {expanded && accounts.map((account, idx) => {
-        const pnlColor = account.total_pnl >= 0 ? colors.profit : colors.loss;
+        const unrealizedPnl = account.summary?.unrealized_pnl ?? 0;
+        const totalEquity = account.summary?.total_equity ?? 0;
+        const purchaseAmount = account.summary?.purchase_amount ?? 0;
+        const pnlPct = purchaseAmount > 0 ? (unrealizedPnl / purchaseAmount) * 100 : 0;
+        const pnlColor = unrealizedPnl >= 0 ? colors.profit : colors.loss;
         return (
           <View key={idx} style={{
             paddingHorizontal: 16,
@@ -346,15 +352,15 @@ function ExternalAccountsSection({ accounts, colors }: { accounts: ExternalAccou
           }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
               <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
-                {account.account_name}
+                {account.name}
               </Text>
               <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
-                {formatKRW(account.total_equity)}
+                {formatKRW(totalEquity)}
               </Text>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
               <Text style={{ color: pnlColor, fontSize: 12 }}>
-                {account.total_pnl >= 0 ? '+' : ''}{formatKRW(account.total_pnl)} ({formatPct(account.total_pnl_pct)})
+                {unrealizedPnl >= 0 ? '+' : ''}{formatKRW(unrealizedPnl)} ({formatPct(pnlPct)})
               </Text>
             </View>
           </View>
@@ -391,10 +397,10 @@ function PendingOrdersSection({ orders, colors }: { orders: PendingOrder[]; colo
       </View>
 
       {orders.map((order, idx) => {
-        const sideColor = order.side === 'buy' ? colors.profit : colors.loss;
-        const sideText = order.side === 'buy' ? '매수' : '매도';
-        const maxElapsed = 90; // 90초 기준
-        const elapsedRatio = Math.min(order.elapsed_seconds / maxElapsed, 1);
+        const isBuy = order.side === 'BUY';
+        const sideColor = isBuy ? colors.profit : colors.loss;
+        const sideText = isBuy ? '매수' : '매도';
+        const elapsedRatio = order.progress_pct / 100;
 
         return (
           <View key={idx} style={{
@@ -420,7 +426,7 @@ function PendingOrdersSection({ orders, colors }: { orders: PendingOrder[]; colo
                 </View>
               </View>
               <Text style={{ color: colors.muted, fontSize: 11 }}>
-                {order.quantity}주 @ {formatPrice(order.price)}
+                {order.quantity}주
               </Text>
             </View>
             {/* 경과시간 바 */}
@@ -434,7 +440,7 @@ function PendingOrdersSection({ orders, colors }: { orders: PendingOrder[]; colo
                 height: 2,
                 borderRadius: 1,
                 backgroundColor: elapsedRatio > 0.8 ? colors.error : colors.warning,
-                width: `${elapsedRatio * 100}%` as any,
+                width: `${Math.min(elapsedRatio * 100, 100)}%` as any,
               }} />
             </View>
           </View>
@@ -467,7 +473,7 @@ function ThemeChips({ themes, colors }: { themes: ThemeData[]; colors: ThemeColo
             paddingVertical: 8,
           }}>
             <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '500' }}>
-              {theme.theme}
+              {theme.name}
             </Text>
             <View style={{
               marginLeft: 6,

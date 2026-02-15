@@ -92,7 +92,7 @@ function PnlHero({ position, colors }: { position: PositionData; colors: ThemeCo
         </Text>
       </View>
 
-      {/* 평가금액 + 비중 */}
+      {/* 평가금액 */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 }}>
         <View>
           <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 2 }}>평가금액</Text>
@@ -101,9 +101,9 @@ function PnlHero({ position, colors }: { position: PositionData; colors: ThemeCo
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 2 }}>비중</Text>
+          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 2 }}>매입금액</Text>
           <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600' }}>
-            {position.weight.toFixed(1)}%
+            {formatKRW(position.cost_basis)}
           </Text>
         </View>
       </View>
@@ -127,14 +127,14 @@ function PriceLevelChart({ position, colors }: { position: PositionData; colors:
 
   const avgPrice = position.avg_price;
   const currentPrice = position.current_price;
-  const stopLossPct = position.stop_loss_pct ?? 2.5;
-  const stopLossPrice = Math.round(avgPrice * (1 - stopLossPct / 100));
+  const stopLoss = position.stop_loss;
+  const stopLossPrice = stopLoss ? Math.round(stopLoss) : Math.round(avgPrice * (1 - 2.5 / 100));
   const firstExitPrice = Math.round(avgPrice * (1 + 2.5 / 100));
-  const trailingHigh = position.trailing_high;
+  const highestPrice = position.highest_price;
 
   // 모든 가격 레벨 수집
   const prices = [avgPrice, currentPrice, stopLossPrice, firstExitPrice];
-  if (trailingHigh) prices.push(trailingHigh);
+  if (highestPrice) prices.push(highestPrice);
 
   const minPrice = Math.min(...prices) * 0.998;
   const maxPrice = Math.max(...prices) * 1.002;
@@ -189,11 +189,11 @@ function PriceLevelChart({ position, colors }: { position: PositionData; colors:
     },
   ];
 
-  if (trailingHigh) {
+  if (highestPrice) {
     levels.push({
-      price: trailingHigh,
-      y: priceToY(trailingHigh),
-      label: '트레일링 고점',
+      price: highestPrice,
+      y: priceToY(highestPrice),
+      label: '최고가',
       color: colors.warning,
       dashArray: '4,4',
       isCurrent: false,
@@ -283,15 +283,20 @@ function DetailCard({ label, value, colors }: { label: string; value: string; co
 }
 
 const STRATEGY_LABELS: Record<string, string> = {
-  MOMENTUM_BREAKOUT: '모멘텀',
-  SEPA_TREND: 'SEPA',
-  THEME_CHASING: '테마',
-  GAP_AND_GO: '갭상승',
+  momentum_breakout: '모멘텀',
+  sepa_trend: 'SEPA',
+  theme_chasing: '테마',
+  gap_and_go: '갭상승',
 };
 
 function PositionDetails({ position, colors }: { position: PositionData; colors: ThemeColors }) {
-  const entryDate = new Date(position.entry_date);
-  const dateStr = `${entryDate.getFullYear()}-${(entryDate.getMonth() + 1).toString().padStart(2, '0')}-${entryDate.getDate().toString().padStart(2, '0')}`;
+  const entryTime = position.entry_time;
+  const dateStr = entryTime
+    ? (() => {
+        const d = new Date(entryTime);
+        return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+      })()
+    : '-';
   const investedAmount = position.avg_price * position.quantity;
 
   return (
@@ -313,7 +318,7 @@ function PositionDetails({ position, colors }: { position: PositionData; colors:
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <DetailCard label="투자금" value={formatKRW(investedAmount)} colors={colors} />
         <DetailCard label="평가금" value={formatKRW(position.market_value)} colors={colors} />
-        <DetailCard label="전략" value={STRATEGY_LABELS[position.strategy] || position.strategy} colors={colors} />
+        <DetailCard label="전략" value={STRATEGY_LABELS[position.strategy || ''] || position.strategy || '-'} colors={colors} />
       </View>
 
       {/* 진입일 */}
@@ -337,21 +342,17 @@ function PositionDetails({ position, colors }: { position: PositionData; colors:
 // =============================================================================
 
 const EXIT_STATE_MAP: Record<string, { label: string; color: string; bgColor: string }> = {
-  MONITORING: { label: '모니터링 중', color: '#94a3b8', bgColor: 'rgba(148,163,184,0.15)' },
-  BREAKEVEN: { label: '본전 이동 활성', color: '#60a5fa', bgColor: 'rgba(96,165,250,0.15)' },
-  TRAILING: { label: '트레일링 스탑 활성', color: '#34d399', bgColor: 'rgba(52,211,153,0.15)' },
-  FIRST_EXIT: { label: '1차 익절 완료', color: '#a78bfa', bgColor: 'rgba(167,139,250,0.15)' },
+  none: { label: '대기', color: '#94a3b8', bgColor: 'rgba(148,163,184,0.15)' },
+  monitoring: { label: '모니터링 중', color: '#94a3b8', bgColor: 'rgba(148,163,184,0.15)' },
+  breakeven: { label: '본전 이동 활성', color: '#60a5fa', bgColor: 'rgba(96,165,250,0.15)' },
+  trailing: { label: '트레일링 스탑 활성', color: '#34d399', bgColor: 'rgba(52,211,153,0.15)' },
+  first_exit: { label: '1차 익절 완료', color: '#a78bfa', bgColor: 'rgba(167,139,250,0.15)' },
 };
 
-const EXIT_STAGES = [
-  { stage: 1, label: '1단계(30%)' },
-  { stage: 2, label: '2단계(50%)' },
-  { stage: 3, label: '3단계(100%)' },
-];
-
 function ExitProgress({ position, colors }: { position: PositionData; colors: ThemeColors }) {
-  const exitState = EXIT_STATE_MAP[position.exit_state || 'MONITORING'] || EXIT_STATE_MAP.MONITORING;
-  const completedStages = position.exit_stages_completed || [];
+  const exitStage = position.exit_state?.stage || 'none';
+  const exitState = EXIT_STATE_MAP[exitStage] || EXIT_STATE_MAP.none;
+  const exitInfo = position.exit_state;
 
   return (
     <View style={{
@@ -379,42 +380,51 @@ function ExitProgress({ position, colors }: { position: PositionData; colors: Th
         </Text>
       </View>
 
-      {/* 단계별 진행 */}
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        {EXIT_STAGES.map(({ stage, label }) => {
-          const isCompleted = completedStages.includes(stage);
-          return (
-            <View
-              key={stage}
-              style={{
-                flex: 1,
-                backgroundColor: isCompleted ? colors.success + '22' : colors.elevated,
-                borderRadius: 8,
-                padding: 10,
-                alignItems: 'center',
-                borderWidth: 1,
-                borderColor: isCompleted ? colors.success + '44' : 'transparent',
-              }}
-            >
-              <Text style={{
-                color: isCompleted ? colors.success : colors.muted,
-                fontSize: 16,
-                fontWeight: '700',
-                marginBottom: 4,
-              }}>
-                {isCompleted ? '\u2713' : '\u2013'}
-              </Text>
-              <Text style={{
-                color: isCompleted ? colors.success : colors.muted,
-                fontSize: 11,
-                fontWeight: '600',
-              }}>
-                {label}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
+      {/* 청산 상태 상세 정보 */}
+      {exitInfo && (
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{
+            flex: 1,
+            backgroundColor: colors.elevated,
+            borderRadius: 8,
+            padding: 10,
+            alignItems: 'center',
+          }}>
+            <Text style={{ color: colors.muted, fontSize: 10, marginBottom: 4 }}>원래수량</Text>
+            <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
+              {exitInfo.original_quantity}주
+            </Text>
+          </View>
+          <View style={{
+            flex: 1,
+            backgroundColor: colors.elevated,
+            borderRadius: 8,
+            padding: 10,
+            alignItems: 'center',
+          }}>
+            <Text style={{ color: colors.muted, fontSize: 10, marginBottom: 4 }}>잔여수량</Text>
+            <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
+              {exitInfo.remaining_quantity}주
+            </Text>
+          </View>
+          <View style={{
+            flex: 1,
+            backgroundColor: colors.elevated,
+            borderRadius: 8,
+            padding: 10,
+            alignItems: 'center',
+          }}>
+            <Text style={{ color: colors.muted, fontSize: 10, marginBottom: 4 }}>실현손익</Text>
+            <Text style={{
+              color: exitInfo.realized_pnl >= 0 ? colors.success : colors.error,
+              fontSize: 13,
+              fontWeight: '600',
+            }}>
+              {formatKRW(exitInfo.realized_pnl)}
+            </Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }

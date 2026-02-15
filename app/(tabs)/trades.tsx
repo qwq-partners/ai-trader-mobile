@@ -10,7 +10,7 @@ import {
 import { useTradingData } from '@/lib/trading-data-provider';
 import { apiClient } from '@/lib/api-client';
 import type { TradeData } from '@/lib/api-client';
-import { DEMO_TRADES, formatKRW, formatPct, formatPrice, formatTime } from '@/lib/demo-data';
+import { DEMO_TRADES, formatKRW, formatPct, formatPrice, formatTime, formatHoldingTime } from '@/lib/demo-data';
 import { ScreenContainer } from '@/components/screen-container';
 import { useColors } from '@/hooks/use-colors';
 import { toDateString } from '@/lib/utils';
@@ -80,7 +80,7 @@ function DateNavigator({
         style={{ padding: 8 }}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '700' }}>◀</Text>
+        <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '700' }}>{'\u25C0'}</Text>
       </TouchableOpacity>
 
       <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '600', minWidth: 110, textAlign: 'center' }}>
@@ -93,7 +93,7 @@ function DateNavigator({
         style={{ padding: 8, opacity: isFuture ? 0.3 : 1 }}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Text style={{ color: isFuture ? colors.muted : colors.primary, fontSize: 18, fontWeight: '700' }}>▶</Text>
+        <Text style={{ color: isFuture ? colors.muted : colors.primary, fontSize: 18, fontWeight: '700' }}>{'\u25B6'}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -122,17 +122,19 @@ function DailySummary({ trades }: { trades: TradeData[] }) {
   const colors = useColors();
 
   const stats = useMemo(() => {
-    const sellTrades = trades.filter((t) => t.side === 'sell');
-    const wins = sellTrades.filter((t) => (t.pnl ?? 0) > 0);
-    const winRate = sellTrades.length > 0 ? (wins.length / sellTrades.length) * 100 : 0;
-    const totalPnl = sellTrades.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
+    // 저널 포맷: 청산된 거래만 통계에 포함
+    const closedTrades = trades.filter((t) => t.exit_time != null);
+    const wins = closedTrades.filter((t) => t.pnl > 0);
+    const winRate = closedTrades.length > 0 ? (wins.length / closedTrades.length) * 100 : 0;
+    const totalPnl = closedTrades.reduce((sum, t) => sum + t.pnl, 0);
     const avgPnlPct =
-      sellTrades.length > 0
-        ? sellTrades.reduce((sum, t) => sum + (t.pnl_pct ?? 0), 0) / sellTrades.length
+      closedTrades.length > 0
+        ? closedTrades.reduce((sum, t) => sum + t.pnl_pct, 0) / closedTrades.length
         : 0;
 
     return {
       tradeCount: trades.length,
+      closedCount: closedTrades.length,
       winRate,
       totalPnl,
       avgPnlPct,
@@ -143,7 +145,7 @@ function DailySummary({ trades }: { trades: TradeData[] }) {
     { label: '거래수', value: `${stats.tradeCount}건`, color: colors.foreground },
     {
       label: '승률',
-      value: stats.tradeCount > 0 ? `${stats.winRate.toFixed(1)}%` : '-',
+      value: stats.closedCount > 0 ? `${stats.winRate.toFixed(1)}%` : '-',
       color: stats.winRate >= 50 ? colors.profit : stats.winRate > 0 ? colors.loss : colors.muted,
     },
     {
@@ -153,7 +155,7 @@ function DailySummary({ trades }: { trades: TradeData[] }) {
     },
     {
       label: '평균수익률',
-      value: stats.tradeCount > 0 ? formatPct(stats.avgPnlPct) : '-',
+      value: stats.closedCount > 0 ? formatPct(stats.avgPnlPct) : '-',
       color: stats.avgPnlPct > 0 ? colors.profit : stats.avgPnlPct < 0 ? colors.loss : colors.muted,
     },
   ];
@@ -190,20 +192,18 @@ interface ExitCategory {
   count: number;
 }
 
-function classifyExitType(
-  trade: TradeData,
-  colors: ReturnType<typeof useColors>,
-): string {
-  const reason = (trade.exit_reason ?? trade.reason ?? '').toLowerCase();
-  if (reason.includes('손절') || reason.includes('stop')) return 'stop';
-  if (reason.includes('1차') || reason.includes('first')) return 'first';
-  if (reason.includes('트레일링') || reason.includes('trailing')) return 'trailing';
+function classifyExitType(trade: TradeData): string {
+  const reason = (trade.exit_reason ?? '').toLowerCase();
+  const exitType = (trade.exit_type ?? '').toLowerCase();
+  if (reason.includes('손절') || reason.includes('stop') || exitType === 'stop_loss') return 'stop';
+  if (reason.includes('1차') || reason.includes('first') || exitType === 'first_exit') return 'first';
+  if (reason.includes('트레일링') || reason.includes('trailing') || exitType === 'trailing') return 'trailing';
   return 'other';
 }
 
 function ExitTypeBar({ trades }: { trades: TradeData[] }) {
   const colors = useColors();
-  const sellTrades = trades.filter((t) => t.side === 'sell');
+  const closedTrades = trades.filter((t) => t.exit_time != null);
 
   const categories = useMemo((): ExitCategory[] => {
     const map: Record<string, ExitCategory> = {
@@ -213,17 +213,17 @@ function ExitTypeBar({ trades }: { trades: TradeData[] }) {
       other: { label: '기타', color: colors.muted, count: 0 },
     };
 
-    sellTrades.forEach((t) => {
-      const type = classifyExitType(t, colors);
+    closedTrades.forEach((t) => {
+      const type = classifyExitType(t);
       map[type].count++;
     });
 
     return Object.values(map).filter((c) => c.count > 0);
-  }, [sellTrades, colors]);
+  }, [closedTrades, colors]);
 
-  if (sellTrades.length === 0) return null;
+  if (closedTrades.length === 0) return null;
 
-  const total = sellTrades.length;
+  const total = closedTrades.length;
 
   return (
     <View style={{ marginHorizontal: 16, marginTop: 12 }}>
@@ -275,14 +275,15 @@ function ExitTypeBar({ trades }: { trades: TradeData[] }) {
 // TradeList
 // =============================================================================
 
+const STRATEGY_LABELS: Record<string, string> = {
+  momentum_breakout: '모멘텀',
+  sepa_trend: 'SEPA',
+  theme_chasing: '테마',
+  gap_and_go: '갭상승',
+};
+
 function strategyLabel(strategy: string): string {
-  const map: Record<string, string> = {
-    MOMENTUM_BREAKOUT: '모멘텀',
-    SEPA_TREND: 'SEPA',
-    THEME_CHASING: '테마',
-    GAP_AND_GO: '갭상승',
-  };
-  return map[strategy] ?? strategy;
+  return STRATEGY_LABELS[strategy] ?? strategy;
 }
 
 function TradeCard({
@@ -293,10 +294,12 @@ function TradeCard({
   onPress: () => void;
 }) {
   const colors = useColors();
-  const isBuy = trade.side === 'buy';
-  const barColor = isBuy ? colors.info : colors.error;
+  const isClosed = trade.exit_time != null;
+  const barColor = isClosed
+    ? (trade.pnl >= 0 ? colors.success : colors.error)
+    : colors.info;
   const pnlColor =
-    (trade.pnl ?? 0) > 0 ? colors.profit : (trade.pnl ?? 0) < 0 ? colors.loss : colors.muted;
+    trade.pnl > 0 ? colors.profit : trade.pnl < 0 ? colors.loss : colors.muted;
 
   return (
     <TouchableOpacity
@@ -323,7 +326,7 @@ function TradeCard({
 
       {/* Content */}
       <View style={{ flex: 1 }}>
-        {/* Header: name + strategy badge */}
+        {/* Header: name + strategy badge + status badge */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
           <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700', marginRight: 8 }}>
             {trade.name}
@@ -337,20 +340,20 @@ function TradeCard({
             }}
           >
             <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}>
-              {strategyLabel(trade.strategy)}
+              {strategyLabel(trade.entry_strategy)}
             </Text>
           </View>
           <View
             style={{
-              backgroundColor: isBuy ? 'rgba(96,165,250,0.15)' : 'rgba(248,113,113,0.15)',
+              backgroundColor: isClosed ? 'rgba(248,113,113,0.15)' : 'rgba(96,165,250,0.15)',
               borderRadius: 4,
               paddingVertical: 2,
               paddingHorizontal: 6,
               marginLeft: 4,
             }}
           >
-            <Text style={{ color: isBuy ? colors.info : colors.error, fontSize: 10, fontWeight: '600' }}>
-              {isBuy ? '매수' : '매도'}
+            <Text style={{ color: isClosed ? colors.error : colors.info, fontSize: 10, fontWeight: '600' }}>
+              {isClosed ? '청산' : '보유중'}
             </Text>
           </View>
         </View>
@@ -358,33 +361,31 @@ function TradeCard({
         {/* Price row */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
           <Text style={{ color: colors.muted, fontSize: 13 }}>
-            {formatPrice(trade.price)}원 x {trade.quantity}주
+            {formatPrice(trade.entry_price)}원 x {trade.entry_quantity}주
           </Text>
-          {!isBuy && trade.entry_price != null && (
+          {isClosed && trade.exit_price != null && (
             <Text style={{ color: colors.muted, fontSize: 12, marginLeft: 8 }}>
-              ({formatPrice(trade.entry_price)} → {formatPrice(trade.exit_price ?? trade.price)})
+              ({formatPrice(trade.entry_price)} {'\u2192'} {formatPrice(trade.exit_price)})
             </Text>
           )}
         </View>
 
-        {/* PnL + hold_time row (sell only) */}
-        {!isBuy && (
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {trade.pnl != null && (
-              <Text style={{ color: pnlColor, fontSize: 14, fontWeight: '700', marginRight: 8 }}>
-                {trade.pnl > 0 ? '+' : ''}
-                {formatKRW(trade.pnl)} ({formatPct(trade.pnl_pct ?? 0)})
-              </Text>
-            )}
-            {trade.hold_time && (
-              <Text style={{ color: colors.muted, fontSize: 11 }}>{trade.hold_time}</Text>
-            )}
-          </View>
-        )}
+        {/* PnL + holding_minutes row */}
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ color: pnlColor, fontSize: 14, fontWeight: '700', marginRight: 8 }}>
+            {trade.pnl > 0 ? '+' : ''}
+            {formatKRW(trade.pnl)} ({formatPct(trade.pnl_pct)})
+          </Text>
+          {trade.holding_minutes > 0 && (
+            <Text style={{ color: colors.muted, fontSize: 11 }}>
+              {formatHoldingTime(trade.holding_minutes)}
+            </Text>
+          )}
+        </View>
 
         {/* Timestamp */}
         <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>
-          {formatTime(trade.timestamp)}
+          {formatTime(trade.entry_time)}
         </Text>
       </View>
     </TouchableOpacity>
@@ -424,7 +425,7 @@ function TradeList({
       <FlatList
         data={trades}
         scrollEnabled={false}
-        keyExtractor={(item, idx) => `${item.symbol}-${item.side}-${item.timestamp}-${idx}`}
+        keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TradeCard trade={item} onPress={() => onPress(item)} />
         )}
@@ -459,7 +460,7 @@ function DetailRow({
       }}
     >
       <Text style={{ color: colors.muted, fontSize: 14 }}>{label}</Text>
-      <Text style={{ color: valueColor ?? colors.foreground, fontSize: 14, fontWeight: '600' }}>
+      <Text style={{ color: valueColor ?? colors.foreground, fontSize: 14, fontWeight: '600', flexShrink: 1, textAlign: 'right', marginLeft: 12 }}>
         {value}
       </Text>
     </View>
@@ -474,9 +475,9 @@ function TradeDetailModal({
   onClose: () => void;
 }) {
   const colors = useColors();
-  const isBuy = trade.side === 'buy';
+  const isClosed = trade.exit_time != null;
   const pnlColor =
-    (trade.pnl ?? 0) > 0 ? colors.profit : (trade.pnl ?? 0) < 0 ? colors.loss : colors.muted;
+    trade.pnl > 0 ? colors.profit : trade.pnl < 0 ? colors.loss : colors.muted;
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -527,43 +528,53 @@ function TradeDetailModal({
               }}
             >
               <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600' }}>
-                {strategyLabel(trade.strategy)}
+                {strategyLabel(trade.entry_strategy)}
               </Text>
             </View>
           </View>
 
           {/* Details */}
-          <DetailRow label="구분" value={isBuy ? '매수' : '매도'} valueColor={isBuy ? colors.info : colors.error} />
+          <DetailRow label="상태" value={isClosed ? '청산' : '보유중'} valueColor={isClosed ? colors.error : colors.info} />
           <DetailRow label="종목코드" value={trade.symbol} />
-          <DetailRow label="수량" value={`${trade.quantity}주`} />
-          <DetailRow label="가격" value={`${formatPrice(trade.price)}원`} />
-          <DetailRow label="금액" value={formatKRW(trade.amount)} />
+          <DetailRow label="진입수량" value={`${trade.entry_quantity}주`} />
+          <DetailRow label="진입가" value={`${formatPrice(trade.entry_price)}원`} />
+          <DetailRow label="진입금액" value={formatKRW(trade.entry_price * trade.entry_quantity)} />
 
-          {!isBuy && trade.entry_price != null && (
-            <DetailRow
-              label="진입가 → 청산가"
-              value={`${formatPrice(trade.entry_price)} → ${formatPrice(trade.exit_price ?? trade.price)}`}
-            />
+          {isClosed && trade.exit_price != null && (
+            <>
+              <DetailRow
+                label="청산가"
+                value={`${formatPrice(trade.exit_price)}원`}
+              />
+              <DetailRow
+                label="청산수량"
+                value={`${trade.exit_quantity ?? trade.entry_quantity}주`}
+              />
+            </>
           )}
 
-          {trade.pnl != null && (
-            <DetailRow
-              label="손익"
-              value={`${trade.pnl > 0 ? '+' : ''}${formatKRW(trade.pnl)} (${formatPct(trade.pnl_pct ?? 0)})`}
-              valueColor={pnlColor}
-            />
-          )}
+          <DetailRow
+            label="손익"
+            value={`${trade.pnl > 0 ? '+' : ''}${formatKRW(trade.pnl)} (${formatPct(trade.pnl_pct)})`}
+            valueColor={pnlColor}
+          />
 
-          {trade.entry_reason && (
+          {trade.entry_reason ? (
             <DetailRow label="진입 사유" value={trade.entry_reason} />
-          )}
-          {trade.exit_reason && (
+          ) : null}
+          {trade.exit_reason ? (
             <DetailRow label="청산 사유" value={trade.exit_reason} />
+          ) : null}
+          {trade.exit_type ? (
+            <DetailRow label="청산 유형" value={trade.exit_type} />
+          ) : null}
+          {trade.holding_minutes > 0 && (
+            <DetailRow label="보유시간" value={formatHoldingTime(trade.holding_minutes)} />
           )}
-          {trade.hold_time && (
-            <DetailRow label="보유시간" value={trade.hold_time} />
+          <DetailRow label="진입시간" value={formatTime(trade.entry_time)} />
+          {trade.entry_signal_score > 0 && (
+            <DetailRow label="시그널 점수" value={`${trade.entry_signal_score}`} />
           )}
-          <DetailRow label="시간" value={formatTime(trade.timestamp)} />
 
           {/* Close button */}
           <TouchableOpacity

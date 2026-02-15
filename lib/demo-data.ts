@@ -7,25 +7,42 @@ import type {
 const INITIAL_CAPITAL = 10_000_000;
 
 export const DEMO_PORTFOLIO: PortfolioData = {
+  cash: 5_120_000,
+  total_position_value: 5_114_500,
   total_equity: 10_234_500,
-  cash_balance: 5_120_000,
-  invested_amount: 5_114_500,
+  initial_capital: INITIAL_CAPITAL,
   total_pnl: 234_500,
   total_pnl_pct: 2.35,
   daily_pnl: 87_200,
+  realized_daily_pnl: 42_000,
+  unrealized_pnl: 96_500,
   daily_pnl_pct: 0.86,
-  initial_capital: INITIAL_CAPITAL,
+  daily_trades: 3,
+  cash_ratio: 0.50,
   position_count: 3,
+  timestamp: new Date().toISOString(),
 };
 
 export const DEMO_STATUS: StatusData = {
-  status: 'running',
-  market_session: 'REGULAR',
+  running: true,
+  session: 'REGULAR',
   uptime_seconds: 28800,
-  event_count: 156,
-  ws_connected: false,
-  trading_enabled: true,
-  start_time: new Date(Date.now() - 28800000).toISOString(),
+  engine: {
+    events_processed: 156,
+    signals_generated: 5,
+    orders_submitted: 3,
+    orders_filled: 3,
+    errors_count: 0,
+    paused: false,
+  },
+  websocket: {
+    connected: false,
+    subscribed_count: 0,
+    message_count: 0,
+    last_message_time: null,
+  },
+  watch_symbols_count: 113,
+  timestamp: new Date().toISOString(),
 };
 
 export const DEMO_POSITIONS: PositionData[] = [
@@ -35,16 +52,22 @@ export const DEMO_POSITIONS: PositionData[] = [
     quantity: 30,
     avg_price: 72500,
     current_price: 74200,
+    market_value: 2226000,
+    cost_basis: 2175000,
     unrealized_pnl: 51000,
     unrealized_pnl_pct: 2.34,
-    market_value: 2226000,
-    weight: 21.7,
-    strategy: 'MOMENTUM_BREAKOUT',
-    entry_date: new Date().toISOString(),
-    exit_state: 'TRAILING',
-    trailing_high: 74800,
-    stop_loss_pct: 2.5,
-    exit_stages_completed: [1],
+    strategy: 'momentum_breakout',
+    entry_time: new Date().toISOString(),
+    stop_loss: null,
+    take_profit: null,
+    highest_price: 74800,
+    exit_state: {
+      stage: 'trailing',
+      original_quantity: 30,
+      remaining_quantity: 30,
+      highest_price: 74800,
+      realized_pnl: 0,
+    },
   },
   {
     symbol: '000660',
@@ -52,15 +75,22 @@ export const DEMO_POSITIONS: PositionData[] = [
     quantity: 15,
     avg_price: 178000,
     current_price: 182500,
+    market_value: 2737500,
+    cost_basis: 2670000,
     unrealized_pnl: 67500,
     unrealized_pnl_pct: 2.53,
-    market_value: 2737500,
-    weight: 26.7,
-    strategy: 'SEPA_TREND',
-    entry_date: new Date(Date.now() - 86400000).toISOString(),
-    exit_state: 'BREAKEVEN',
-    stop_loss_pct: 2.5,
-    exit_stages_completed: [],
+    strategy: 'sepa_trend',
+    entry_time: new Date(Date.now() - 86400000).toISOString(),
+    stop_loss: null,
+    take_profit: null,
+    highest_price: 182500,
+    exit_state: {
+      stage: 'breakeven',
+      original_quantity: 15,
+      remaining_quantity: 15,
+      highest_price: 182500,
+      realized_pnl: 0,
+    },
   },
   {
     symbol: '035720',
@@ -68,68 +98,87 @@ export const DEMO_POSITIONS: PositionData[] = [
     quantity: 40,
     avg_price: 38200,
     current_price: 37650,
+    market_value: 1506000,
+    cost_basis: 1528000,
     unrealized_pnl: -22000,
     unrealized_pnl_pct: -1.44,
-    market_value: 1506000,
-    weight: 14.7,
-    strategy: 'THEME_CHASING',
-    entry_date: new Date().toISOString(),
-    exit_state: 'MONITORING',
-    stop_loss_pct: 2.5,
-    exit_stages_completed: [],
+    strategy: 'theme_chasing',
+    entry_time: new Date().toISOString(),
+    stop_loss: null,
+    take_profit: null,
+    highest_price: 38500,
+    exit_state: {
+      stage: 'monitoring',
+      original_quantity: 40,
+      remaining_quantity: 40,
+      highest_price: 38500,
+      realized_pnl: 0,
+    },
   },
 ];
 
 export const DEMO_RISK: RiskData = {
-  daily_pnl: 87200,
-  daily_pnl_pct: 0.86,
-  daily_loss_limit: -200000,
-  daily_loss_limit_pct: -2.0,
+  can_trade: true,
+  daily_loss_pct: 0.86,
+  daily_loss_limit_pct: 2.0,
+  daily_trades: 3,
+  daily_max_trades: 30,
   position_count: 3,
-  max_positions: 0,
-  cash_ratio: 50.0,
-  trading_enabled: true,
+  max_positions: 7,
+  config_max_positions: 7,
   consecutive_losses: 0,
+  timestamp: new Date().toISOString(),
 };
 
 export const DEMO_TRADES: TradeData[] = [
   {
+    id: '005930_20260215100000000000',
     symbol: '005930',
     name: '삼성전자',
-    side: 'buy',
-    strategy: 'MOMENTUM_BREAKOUT',
-    quantity: 30,
-    price: 72500,
-    amount: 2175000,
-    timestamp: new Date(Date.now() - 14400000).toISOString(),
+    entry_time: new Date(Date.now() - 14400000).toISOString(),
+    entry_price: 72500,
+    entry_quantity: 30,
     entry_reason: '20일 고가 돌파 + 거래량 3.2배',
+    entry_strategy: 'momentum_breakout',
+    entry_signal_score: 85,
+    pnl: 51000,
+    pnl_pct: 2.34,
+    holding_minutes: 240,
+    current_price: 74200,
   },
   {
+    id: '035720_20260215110000000000',
     symbol: '035720',
     name: '카카오',
-    side: 'buy',
-    strategy: 'THEME_CHASING',
-    quantity: 40,
-    price: 38200,
-    amount: 1528000,
-    timestamp: new Date(Date.now() - 10800000).toISOString(),
+    entry_time: new Date(Date.now() - 10800000).toISOString(),
+    entry_price: 38200,
+    entry_quantity: 40,
     entry_reason: 'AI 테마 상위 + 거래량 급증',
+    entry_strategy: 'theme_chasing',
+    entry_signal_score: 82,
+    pnl: -22000,
+    pnl_pct: -1.44,
+    holding_minutes: 180,
+    current_price: 37650,
   },
   {
+    id: '068270_20260215120000000000',
     symbol: '068270',
     name: '셀트리온',
-    side: 'sell',
-    strategy: 'MOMENTUM_BREAKOUT',
-    quantity: 20,
-    price: 195000,
-    amount: 3900000,
+    entry_time: new Date(Date.now() - 14400000).toISOString(),
+    entry_price: 193000,
+    entry_quantity: 20,
+    entry_reason: '20일 고가 돌파 + 거래량 2.8배',
+    entry_strategy: 'momentum_breakout',
+    entry_signal_score: 78,
+    exit_time: new Date(Date.now() - 7200000).toISOString(),
+    exit_price: 195000,
+    exit_quantity: 20,
+    exit_reason: '1차 익절 (2.5%)',
+    exit_type: 'first_exit',
     pnl: 42000,
     pnl_pct: 1.08,
-    timestamp: new Date(Date.now() - 7200000).toISOString(),
-    exit_reason: '1차 익절 (2.5%)',
-    hold_time: '2시간 15분',
-    entry_price: 193000,
-    exit_price: 195000,
+    holding_minutes: 135,
   },
 ];
 
@@ -145,43 +194,50 @@ export const DEMO_EVENTS: EventData[] = [
 export const DEMO_PENDING_ORDERS: PendingOrder[] = [];
 
 export const DEMO_THEMES: ThemeData[] = [
-  { theme: 'AI/반도체', score: 92, keywords: ['AI', 'HBM', '반도체'], stocks: ['SK하이닉스', '삼성전자', 'DB하이텍'], detected_at: new Date().toISOString() },
-  { theme: '2차전지', score: 78, keywords: ['배터리', '리튬', '전고체'], stocks: ['LG에너지솔루션', '삼성SDI', '에코프로'], detected_at: new Date().toISOString() },
-  { theme: '바이오', score: 71, keywords: ['신약', '임상', 'FDA'], stocks: ['셀트리온', '삼성바이오', '유한양행'], detected_at: new Date().toISOString() },
-  { theme: '로봇/자동화', score: 65, keywords: ['로봇', '자동화', '스마트팩토리'], stocks: ['두산로보틱스', '레인보우로보틱스'], detected_at: new Date().toISOString() },
+  { name: 'AI/반도체', score: 92, keywords: ['AI', 'HBM', '반도체'], related_stocks: ['SK하이닉스', '삼성전자', 'DB하이텍'], news_count: 4, detected_at: new Date().toISOString(), last_updated: new Date().toISOString() },
+  { name: '2차전지', score: 78, keywords: ['배터리', '리튬', '전고체'], related_stocks: ['LG에너지솔루션', '삼성SDI', '에코프로'], news_count: 3, detected_at: new Date().toISOString(), last_updated: new Date().toISOString() },
+  { name: '바이오', score: 71, keywords: ['신약', '임상', 'FDA'], related_stocks: ['셀트리온', '삼성바이오', '유한양행'], news_count: 2, detected_at: new Date().toISOString(), last_updated: new Date().toISOString() },
+  { name: '로봇/자동화', score: 65, keywords: ['로봇', '자동화', '스마트팩토리'], related_stocks: ['두산로보틱스', '레인보우로보틱스'], news_count: 1, detected_at: new Date().toISOString(), last_updated: new Date().toISOString() },
 ];
 
 export const DEMO_SCREENING: ScreeningItem[] = [
-  { symbol: '005930', name: '삼성전자', score: 88, price: 74200, change_pct: 2.34, volume_ratio: 3.2, strategy: 'MOMENTUM_BREAKOUT' },
-  { symbol: '000660', name: 'SK하이닉스', score: 85, price: 182500, change_pct: 1.89, volume_ratio: 2.8, strategy: 'SEPA_TREND' },
-  { symbol: '035420', name: 'NAVER', score: 79, price: 215000, change_pct: 1.45, volume_ratio: 2.1, strategy: 'MOMENTUM_BREAKOUT' },
-  { symbol: '068270', name: '셀트리온', score: 76, price: 195000, change_pct: 1.12, volume_ratio: 1.9, strategy: 'THEME_CHASING' },
-  { symbol: '006400', name: '삼성SDI', score: 72, price: 412000, change_pct: 0.98, volume_ratio: 1.7, strategy: 'SEPA_TREND' },
+  { symbol: '005930', name: '삼성전자', score: 88, price: 74200, change_pct: 2.34, volume: 15000000, volume_ratio: 3.2, reasons: ['20일 고가 돌파', '거래량 급증 3.2배'], screened_at: new Date().toISOString() },
+  { symbol: '000660', name: 'SK하이닉스', score: 85, price: 182500, change_pct: 1.89, volume: 8000000, volume_ratio: 2.8, reasons: ['SEPA 트렌드 부합', '외국인 순매수'], screened_at: new Date().toISOString() },
+  { symbol: '035420', name: 'NAVER', score: 79, price: 215000, change_pct: 1.45, volume: 5000000, volume_ratio: 2.1, reasons: ['20일 고가 돌파'], screened_at: new Date().toISOString() },
+  { symbol: '068270', name: '셀트리온', score: 76, price: 195000, change_pct: 1.12, volume: 4000000, volume_ratio: 1.9, reasons: ['테마 상위'], screened_at: new Date().toISOString() },
+  { symbol: '006400', name: '삼성SDI', score: 72, price: 412000, change_pct: 0.98, volume: 3000000, volume_ratio: 1.7, reasons: ['SEPA 트렌드 부합'], screened_at: new Date().toISOString() },
 ];
 
 export const DEMO_STRATEGIES = [
-  { name: 'MOMENTUM_BREAKOUT', total: 45, wins: 22, losses: 23, win_rate: 48.9, total_pnl: 156000, avg_pnl: 3467 },
-  { name: 'SEPA_TREND', total: 28, wins: 15, losses: 13, win_rate: 53.6, total_pnl: 234000, avg_pnl: 8357 },
-  { name: 'THEME_CHASING', total: 32, wins: 14, losses: 18, win_rate: 43.8, total_pnl: -45000, avg_pnl: -1406 },
-  { name: 'GAP_AND_GO', total: 15, wins: 8, losses: 7, win_rate: 53.3, total_pnl: 89000, avg_pnl: 5933 },
+  { name: 'momentum_breakout', trades: 45, wins: 22, losses: 23, win_rate: 48.9, total_pnl: 156000 },
+  { name: 'sepa_trend', trades: 28, wins: 15, losses: 13, win_rate: 53.6, total_pnl: 234000 },
+  { name: 'theme_chasing', trades: 32, wins: 14, losses: 18, win_rate: 43.8, total_pnl: -45000 },
+  { name: 'gap_and_go', trades: 15, wins: 8, losses: 7, win_rate: 53.3, total_pnl: 89000 },
 ];
 
 export const DEMO_EVOLUTION: EvolutionData = {
-  total_evolutions: 12,
-  successful: 8,
-  rolled_back: 3,
-  last_evolution_date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-  pending_changes: [],
-  active_changes: [
-    { strategy: 'MOMENTUM_BREAKOUT', parameter: 'min_volume_ratio', old_value: 2.2, new_value: 2.5, reason: '거짓 신호 감소', confidence: 0.75 },
-  ],
+  summary: {
+    version: 3,
+    total_evolutions: 12,
+    successful_changes: 8,
+    rolled_back_changes: 3,
+    last_evolution: new Date(Date.now() - 86400000).toISOString(),
+    assessment: 'positive',
+    confidence: 0.72,
+  },
+  insights: [],
+  parameter_adjustments: [],
+  parameter_changes: [],
+  avoid_situations: [],
+  focus_opportunities: [],
+  next_week_outlook: '',
 };
 
 export const DEMO_EVOLUTION_HISTORY: EvolutionHistoryItem[] = [
-  { date: '2026-02-14', strategy: 'MOMENTUM_BREAKOUT', parameter: 'min_volume_ratio', old_value: 2.2, new_value: 2.5, reason: '낮은 거래량 종목의 거짓 신호 감소 필요', confidence: 0.75, effect: 'positive', status: 'applied' },
-  { date: '2026-02-13', strategy: 'SEPA_TREND', parameter: 'min_score', old_value: 70, new_value: 60, reason: 'KRX 시장에서 SEPA 필터가 너무 엄격', confidence: 0.8, effect: 'positive', status: 'applied' },
-  { date: '2026-02-12', strategy: 'THEME_CHASING', parameter: 'stop_loss_pct', old_value: 3.0, new_value: 2.5, reason: '손실 제한 강화', confidence: 0.7, effect: 'neutral', status: 'applied' },
-  { date: '2026-02-11', strategy: 'GAP_AND_GO', parameter: 'min_gap_pct', old_value: 2.0, new_value: 3.0, reason: '작은 갭에서 수익률 낮음', confidence: 0.65, effect: 'negative', status: 'rolled_back' },
+  { strategy: 'momentum_breakout', parameter: 'min_volume_ratio', as_is: 2.2, to_be: 2.5, reason: '낮은 거래량 종목의 거짓 신호 감소 필요', source: 'llm', is_effective: true, win_rate_before: 42, win_rate_after: 49, trades_before: 20, trades_after: 15, timestamp: '2026-02-14T20:30:00' },
+  { strategy: 'sepa_trend', parameter: 'min_score', as_is: 70, to_be: 60, reason: 'KRX 시장에서 SEPA 필터가 너무 엄격', source: 'llm', is_effective: true, win_rate_before: 48, win_rate_after: 54, trades_before: 10, trades_after: 15, timestamp: '2026-02-13T20:30:00' },
+  { strategy: 'theme_chasing', parameter: 'stop_loss_pct', as_is: 3.0, to_be: 2.5, reason: '손실 제한 강화', source: 'llm', is_effective: null, win_rate_before: 40, win_rate_after: null, trades_before: 15, trades_after: null, timestamp: '2026-02-12T20:30:00' },
+  { strategy: 'gap_and_go', parameter: 'min_gap_pct', as_is: 2.0, to_be: 3.0, reason: '작은 갭에서 수익률 낮음', source: 'llm', is_effective: false, win_rate_before: 50, win_rate_after: 35, trades_before: 8, trades_after: 5, timestamp: '2026-02-11T20:30:00' },
 ];
 
 export const DEMO_RISK_SETTINGS = {
@@ -229,4 +285,14 @@ export function formatTime(isoString: string): string {
 export function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`;
+}
+
+export function formatHoldingTime(minutes: number): string {
+  if (minutes < 60) return `${minutes}분`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours < 24) return mins > 0 ? `${hours}시간 ${mins}분` : `${hours}시간`;
+  const days = Math.floor(hours / 24);
+  const remainHours = hours % 24;
+  return remainHours > 0 ? `${days}일 ${remainHours}시간` : `${days}일`;
 }

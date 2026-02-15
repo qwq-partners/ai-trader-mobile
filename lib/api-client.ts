@@ -9,25 +9,42 @@ import { Platform } from 'react-native';
 // --- 기본 타입 ---
 
 export interface PortfolioData {
+  cash: number;
+  total_position_value: number;
   total_equity: number;
-  cash_balance: number;
-  invested_amount: number;
+  initial_capital: number;
   total_pnl: number;
   total_pnl_pct: number;
   daily_pnl: number;
+  realized_daily_pnl: number;
+  unrealized_pnl: number;
   daily_pnl_pct: number;
-  initial_capital: number;
+  daily_trades: number;
+  cash_ratio: number;
   position_count: number;
+  timestamp: string;
 }
 
 export interface StatusData {
-  status: string; // running, stopped, etc.
-  market_session: string;
+  running: boolean;
+  session: string;
   uptime_seconds: number;
-  event_count: number;
-  ws_connected: boolean;
-  trading_enabled: boolean;
-  start_time: string;
+  engine: {
+    events_processed: number;
+    signals_generated: number;
+    orders_submitted: number;
+    orders_filled: number;
+    errors_count: number;
+    paused: boolean;
+  };
+  websocket: {
+    connected: boolean;
+    subscribed_count: number;
+    message_count: number;
+    last_message_time: string | null;
+  };
+  watch_symbols_count: number;
+  timestamp: string;
 }
 
 export interface PositionData {
@@ -36,76 +53,92 @@ export interface PositionData {
   quantity: number;
   avg_price: number;
   current_price: number;
+  market_value: number;
+  cost_basis: number;
   unrealized_pnl: number;
   unrealized_pnl_pct: number;
-  market_value: number;
-  weight: number;
-  strategy: string;
-  entry_date: string;
-  exit_state?: string;
-  trailing_high?: number;
-  stop_loss_pct?: number;
-  exit_stages_completed?: number[];
+  strategy: string | null;
+  entry_time: string | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  highest_price: number | null;
+  exit_state: {
+    stage: string;
+    original_quantity: number;
+    remaining_quantity: number;
+    highest_price: number;
+    realized_pnl: number;
+  } | null;
 }
 
 export interface TradeData {
+  id: string;
   symbol: string;
   name: string;
-  side: 'buy' | 'sell';
-  strategy: string;
-  quantity: number;
-  price: number;
-  amount: number;
-  pnl?: number;
-  pnl_pct?: number;
-  reason?: string;
-  entry_reason?: string;
+  entry_time: string;
+  entry_price: number;
+  entry_quantity: number;
+  entry_reason: string;
+  entry_strategy: string;
+  entry_signal_score: number;
+  exit_time?: string | null;
+  exit_price?: number | null;
+  exit_quantity?: number | null;
   exit_reason?: string;
-  hold_time?: string;
-  timestamp: string;
-  entry_price?: number;
-  exit_price?: number;
+  exit_type?: string;
+  pnl: number;
+  pnl_pct: number;
+  holding_minutes: number;
+  current_price?: number;
+  market_context?: Record<string, any>;
+  indicators_at_entry?: Record<string, any>;
+  indicators_at_exit?: Record<string, any>;
+  theme_info?: Record<string, any>;
 }
 
 export interface TradeStats {
   total_trades: number;
-  winning_trades: number;
-  losing_trades: number;
+  wins: number;
+  losses: number;
   win_rate: number;
   total_pnl: number;
-  avg_pnl: number;
   avg_pnl_pct: number;
-  profit_factor: number;
-  max_drawdown: number;
-  avg_hold_time: string;
+  avg_holding_minutes: number;
+  best_trade: TradeData | null;
+  worst_trade: TradeData | null;
   by_strategy: Record<string, {
-    total: number;
+    trades: number;
     wins: number;
-    losses: number;
-    win_rate: number;
     total_pnl: number;
-    avg_pnl: number;
+    win_rate: number;
   }>;
+  open_trades: number;
+  open_pnl: number;
+  open_avg_pnl_pct: number;
+  all_trades: number;
 }
 
 export interface RiskData {
-  daily_pnl: number;
-  daily_pnl_pct: number;
-  daily_loss_limit: number;
+  can_trade: boolean;
+  daily_loss_pct: number;
   daily_loss_limit_pct: number;
+  daily_trades: number;
+  daily_max_trades: number;
   position_count: number;
   max_positions: number;
-  cash_ratio: number;
-  trading_enabled: boolean;
+  config_max_positions: number;
   consecutive_losses: number;
+  timestamp: string;
 }
 
 export interface ThemeData {
-  theme: string;
-  score: number;
+  name: string;
   keywords: string[];
-  stocks: string[];
+  related_stocks: string[];
+  score: number;
+  news_count: number;
   detected_at: string;
+  last_updated: string;
 }
 
 export interface EventData {
@@ -124,46 +157,63 @@ export interface ConfigData {
 }
 
 export interface EvolutionData {
-  total_evolutions: number;
-  successful: number;
-  rolled_back: number;
-  last_evolution_date: string;
-  pending_changes: any[];
-  active_changes: any[];
+  summary: {
+    version: number;
+    total_evolutions: number;
+    successful_changes: number;
+    rolled_back_changes: number;
+    last_evolution: string | null;
+    assessment: string;
+    confidence: number;
+  };
+  insights: any[];
+  parameter_adjustments: any[];
+  parameter_changes: any[];
+  avoid_situations: any[];
+  focus_opportunities: any[];
+  next_week_outlook: string;
 }
 
 export interface EvolutionHistoryItem {
-  date: string;
   strategy: string;
   parameter: string;
-  old_value: any;
-  new_value: any;
+  as_is: any;
+  to_be: any;
   reason: string;
-  confidence: number;
-  effect?: string; // positive, negative, neutral
-  status: string; // applied, rolled_back, pending
+  source: string;
+  is_effective: boolean | null;
+  win_rate_before: number | null;
+  win_rate_after: number | null;
+  trades_before: number | null;
+  trades_after: number | null;
+  timestamp: string;
 }
 
 export interface EquitySnapshot {
   date: string;
   total_equity: number;
-  cash_balance: number;
-  invested_amount: number;
+  cash: number;
+  positions_value: number;
   daily_pnl: number;
   daily_pnl_pct: number;
-  trade_count: number;
-  positions: number;
+  trades_count: number;
+  position_count: number;
+  win_rate: number;
+  positions: any[];
+  timestamp: string;
 }
 
 export interface EquityHistoryResponse {
   snapshots: EquitySnapshot[];
   summary: {
+    period_return: number;
     period_return_pct: number;
     max_drawdown_pct: number;
     avg_daily_pnl: number;
+    first_equity: number;
+    last_equity: number;
     data_days: number;
-    start_equity: number;
-    end_equity: number;
+    oldest_date: string;
   };
 }
 
@@ -177,81 +227,62 @@ export interface EquityCurvePoint {
 
 export interface DailyReviewData {
   date: string;
-  summary: {
-    total_trades: number;
-    win_rate: number;
-    total_pnl: number;
-    profit_loss_ratio: number;
-    llm_grade: string; // A ~ F
-  };
-  trades: Array<{
-    symbol: string;
-    name: string;
-    strategy: string;
-    pnl: number;
-    pnl_pct: number;
-    entry_reason: string;
-    exit_reason: string;
-    llm_analysis: string;
-  }>;
-  llm_analysis: {
-    insights: string[];
-    avoid_patterns: string[];
-    focus_opportunities: string[];
-    overall_assessment: string;
-  };
-  parameter_recommendations: Array<{
-    strategy: string;
-    parameter: string;
-    current_value: any;
-    suggested_value: any;
-    confidence: number;
-    reason: string;
-  }>;
+  trade_report: any;
+  llm_review: any;
 }
 
 export interface ScreeningItem {
   symbol: string;
   name: string;
-  score: number;
   price: number;
   change_pct: number;
+  volume: number;
   volume_ratio: number;
-  strategy: string;
+  score: number;
+  reasons: string[];
+  screened_at: string;
 }
 
 export interface HealthCheck {
   name: string;
-  status: string; // ok, warning, error
+  level: string;
+  ok: boolean;
   message: string;
-  last_check: string;
+  value: any;
+  timestamp: string;
 }
 
 export interface PendingOrder {
   symbol: string;
   name: string;
-  side: string;
-  order_type: string;
+  side: string; // UPPERCASE: "BUY" | "SELL"
   quantity: number;
-  price: number;
-  status: string;
-  submitted_at: string;
   elapsed_seconds: number;
+  timeout_seconds: number;
+  remaining_seconds: number;
+  progress_pct: number;
 }
 
 export interface ExternalAccount {
-  account_name: string;
-  total_equity: number;
-  total_pnl: number;
-  total_pnl_pct: number;
+  name: string;
+  cano: string;
+  summary: {
+    total_equity: number;
+    stock_value: number;
+    deposit: number;
+    unrealized_pnl: number;
+    purchase_amount: number;
+  };
   positions: Array<{
     symbol: string;
     name: string;
-    quantity: number;
+    qty: number;
     avg_price: number;
     current_price: number;
+    eval_amt: number;
     pnl: number;
     pnl_pct: number;
+    change_pct: number;
   }>;
 }
 
@@ -383,7 +414,7 @@ class ApiClient {
     try { return await this.get('/api/evolution/history'); } catch { return []; }
   }
 
-  async applyEvolution(body: { strategy: string; parameter: string; new_value: any }): Promise<{ success: boolean; message: string }> {
+  async applyEvolution(body: { strategy: string; parameter: string; new_value: any; reason?: string }): Promise<{ success: boolean; message: string }> {
     return this.post('/api/evolution/apply', body);
   }
 

@@ -11,7 +11,7 @@ import {
 import { useTradingData } from '@/lib/trading-data-provider';
 import { apiClient } from '@/lib/api-client';
 import type { TradeStats, EquityHistoryResponse, EquitySnapshot, PositionSnapshot } from '@/lib/api-client';
-import { DEMO_STRATEGIES, formatKRW, formatPct } from '@/lib/demo-data';
+import { DEMO_STRATEGIES, formatKRW, formatPct, formatHoldingTime } from '@/lib/demo-data';
 import { ScreenContainer } from '@/components/screen-container';
 import { EquityChart } from '@/components/equity-chart';
 import { useColors } from '@/hooks/use-colors';
@@ -22,21 +22,24 @@ import { useColors } from '@/hooks/use-colors';
 
 const DEMO_STATS: TradeStats = {
   total_trades: 120,
-  winning_trades: 59,
-  losing_trades: 61,
+  wins: 59,
+  losses: 61,
   win_rate: 49.2,
   total_pnl: 434000,
-  avg_pnl: 3617,
   avg_pnl_pct: 0.36,
-  profit_factor: 1.18,
-  max_drawdown: -3.2,
-  avg_hold_time: '4시간 22분',
+  avg_holding_minutes: 262,
+  best_trade: null,
+  worst_trade: null,
   by_strategy: {
-    MOMENTUM_BREAKOUT: { total: 45, wins: 22, losses: 23, win_rate: 48.9, total_pnl: 156000, avg_pnl: 3467 },
-    SEPA_TREND: { total: 28, wins: 15, losses: 13, win_rate: 53.6, total_pnl: 234000, avg_pnl: 8357 },
-    THEME_CHASING: { total: 32, wins: 14, losses: 18, win_rate: 43.8, total_pnl: -45000, avg_pnl: -1406 },
-    GAP_AND_GO: { total: 15, wins: 8, losses: 7, win_rate: 53.3, total_pnl: 89000, avg_pnl: 5933 },
+    momentum_breakout: { trades: 45, wins: 22, total_pnl: 156000, win_rate: 48.9 },
+    sepa_trend: { trades: 28, wins: 15, total_pnl: 234000, win_rate: 53.6 },
+    theme_chasing: { trades: 32, wins: 14, total_pnl: -45000, win_rate: 43.8 },
+    gap_and_go: { trades: 15, wins: 8, total_pnl: 89000, win_rate: 53.3 },
   },
+  open_trades: 0,
+  open_pnl: 0,
+  open_avg_pnl_pct: 0,
+  all_trades: 120,
 };
 
 const DEMO_EQUITY_SNAPSHOTS: EquitySnapshot[] = Array.from({ length: 14 }, (_, i) => {
@@ -47,22 +50,27 @@ const DEMO_EQUITY_SNAPSHOTS: EquitySnapshot[] = Array.from({ length: 14 }, (_, i
   return {
     date: dateStr,
     total_equity: Math.round(baseEquity),
-    cash_balance: Math.round(baseEquity * 0.5),
-    invested_amount: Math.round(baseEquity * 0.5),
+    cash: Math.round(baseEquity * 0.5),
+    positions_value: Math.round(baseEquity * 0.5),
     daily_pnl: Math.round(dailyPnl),
     daily_pnl_pct: parseFloat((dailyPnl / baseEquity * 100).toFixed(2)),
-    trade_count: Math.floor(Math.random() * 6) + 1,
-    positions: Math.floor(Math.random() * 4) + 1,
+    trades_count: Math.floor(Math.random() * 6) + 1,
+    position_count: Math.floor(Math.random() * 4) + 1,
+    win_rate: Math.round(Math.random() * 100),
+    positions: [],
+    timestamp: new Date(date).toISOString(),
   };
 });
 
-const DEMO_EQUITY_SUMMARY = {
+const DEMO_EQUITY_SUMMARY: EquityHistoryResponse['summary'] = {
+  period_return: 234500,
   period_return_pct: 2.35,
   max_drawdown_pct: -3.2,
   avg_daily_pnl: 18500,
+  first_equity: 10_000_000,
+  last_equity: 10_234_500,
   data_days: 14,
-  start_equity: 10_000_000,
-  end_equity: 10_234_500,
+  oldest_date: '2026-02-01',
 };
 
 const DEMO_POSITIONS_FOR_DATE: PositionSnapshot[] = [
@@ -200,13 +208,16 @@ function StatsSummary({ stats }: { stats: TradeStats | null }) {
       value: stats ? formatKRW(stats.total_pnl) : '-',
       color: stats ? (stats.total_pnl >= 0 ? colors.success : colors.error) : colors.foreground,
     },
-    { label: 'PF', value: stats ? stats.profit_factor.toFixed(2) : '-' },
     {
-      label: '최대낙폭',
-      value: stats ? `${stats.max_drawdown.toFixed(1)}%` : '-',
-      color: colors.error,
+      label: '평균수익률',
+      value: stats ? `${stats.avg_pnl_pct.toFixed(2)}%` : '-',
+      color: stats ? (stats.avg_pnl_pct >= 0 ? colors.success : colors.error) : colors.foreground,
     },
-    { label: '평균보유', value: stats?.avg_hold_time || '-' },
+    {
+      label: '진행중',
+      value: stats ? `${stats.open_trades}건` : '-',
+    },
+    { label: '평균보유', value: stats ? formatHoldingTime(stats.avg_holding_minutes) : '-' },
   ];
 
   return (
@@ -248,6 +259,13 @@ function StatsSummary({ stats }: { stats: TradeStats | null }) {
   );
 }
 
+const STRATEGY_LABELS: Record<string, string> = {
+  momentum_breakout: '모멘텀 돌파',
+  sepa_trend: 'SEPA 추세',
+  theme_chasing: '테마 추종',
+  gap_and_go: '갭상승',
+};
+
 function StrategyCards({ stats, isDemo }: { stats: TradeStats | null; isDemo: boolean }) {
   const colors = useColors();
 
@@ -256,21 +274,13 @@ function StrategyCards({ stats, isDemo }: { stats: TradeStats | null; isDemo: bo
     : stats
       ? Object.entries(stats.by_strategy).map(([name, data]) => ({
           name,
-          total: data.total,
+          trades: data.trades,
           wins: data.wins,
-          losses: data.losses,
+          losses: data.trades - data.wins,
           win_rate: data.win_rate,
           total_pnl: data.total_pnl,
-          avg_pnl: data.avg_pnl,
         }))
       : [];
-
-  const STRATEGY_LABELS: Record<string, string> = {
-    MOMENTUM_BREAKOUT: '모멘텀 돌파',
-    SEPA_TREND: 'SEPA 추세',
-    THEME_CHASING: '테마 추종',
-    GAP_AND_GO: '갭상승',
-  };
 
   return (
     <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
@@ -303,7 +313,7 @@ function StrategyCards({ stats, isDemo }: { stats: TradeStats | null; isDemo: bo
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
             <Text style={{ color: colors.muted, fontSize: 12, width: 60 }}>
-              {s.total}건
+              {s.trades}건
             </Text>
             <View style={{ flex: 1, height: 6, backgroundColor: colors.elevated, borderRadius: 3 }}>
               <View style={{
@@ -320,9 +330,6 @@ function StrategyCards({ stats, isDemo }: { stats: TradeStats | null; isDemo: bo
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: colors.muted, fontSize: 11 }}>
               {s.wins}승 {s.losses}패
-            </Text>
-            <Text style={{ color: colors.muted, fontSize: 11 }}>
-              평균 {s.avg_pnl >= 0 ? '+' : ''}{formatKRW(s.avg_pnl)}
             </Text>
           </View>
         </View>
@@ -503,7 +510,7 @@ function DailyList({
         {item.daily_pnl >= 0 ? '+' : ''}{formatKRW(item.daily_pnl)}
       </Text>
       <Text style={{ color: colors.muted, fontSize: 12, width: 36, textAlign: 'right' }}>
-        {item.trade_count}건
+        {item.trades_count}건
       </Text>
     </TouchableOpacity>
   );
