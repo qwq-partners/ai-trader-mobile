@@ -61,11 +61,20 @@ function PortfolioHero({ portfolio, colors }: { portfolio: PortfolioData | null;
       <Text style={{ color: colors.foreground, fontSize: 28, fontWeight: 'bold' }}>
         {formatKRW(totalEquity)}
       </Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6 }}>
-        <Text style={{ color: pnlColor, fontSize: 16, fontWeight: '600' }}>
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+        backgroundColor: dailyPnl >= 0 ? 'rgba(52,211,153,0.12)' : 'rgba(248,113,113,0.12)',
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        alignSelf: 'flex-start',
+      }}>
+        <Text style={{ color: pnlColor, fontSize: 18, fontWeight: '700' }}>
           {dailyPnl >= 0 ? '+' : ''}{formatKRW(dailyPnl)}
         </Text>
-        <Text style={{ color: pnlColor, fontSize: 14, marginLeft: 6 }}>
+        <Text style={{ color: pnlColor, fontSize: 15, fontWeight: '600', marginLeft: 6 }}>
           ({formatPct(dailyPnlPct)})
         </Text>
       </View>
@@ -131,14 +140,14 @@ function RiskGauge({ risk, status, colors }: { risk: RiskData | null; status: St
           {formatPct(risk.daily_loss_pct)} / {formatPct(risk.daily_loss_limit_pct, false)}
         </Text>
         <View style={{
-          height: 3,
-          borderRadius: 1.5,
+          height: 4,
+          borderRadius: 2,
           backgroundColor: colors.elevated,
           marginTop: 6,
         }}>
           <View style={{
-            height: 3,
-            borderRadius: 1.5,
+            height: 4,
+            borderRadius: 2,
             backgroundColor: dailyUsedPct > 80 ? colors.error : dailyUsedPct > 50 ? colors.warning : colors.success,
             width: `${Math.min(dailyUsedPct, 100)}%` as any,
           }} />
@@ -201,56 +210,65 @@ function PositionCard({ position, onPress, colors }: { position: PositionData; o
       style={{
         backgroundColor: colors.surface,
         borderRadius: 12,
-        padding: 16,
         marginHorizontal: 16,
         marginBottom: 8,
+        flexDirection: 'row',
+        overflow: 'hidden',
       }}
     >
-      {/* 상단: 종목명 + 수익률 */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 }}>
-          <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700' }}>
-            {position.name}
-          </Text>
-          <View style={{
-            marginLeft: 8,
-            paddingHorizontal: 6,
-            paddingVertical: 2,
-            borderRadius: 4,
-            backgroundColor: colors.elevated,
-          }}>
-            <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}>
-              {STRATEGY_LABELS[position.strategy || ''] || position.strategy || '-'}
+      {/* 좌측 수익률 컬러바 */}
+      <View style={{
+        width: 5,
+        backgroundColor: pnlColor,
+      }} />
+
+      <View style={{ flex: 1, padding: 16 }}>
+        {/* 상단: 종목명 + 수익률 */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 }}>
+            <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700' }}>
+              {position.name}
+            </Text>
+            <View style={{
+              marginLeft: 8,
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 4,
+              backgroundColor: colors.elevated,
+            }}>
+              <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}>
+                {STRATEGY_LABELS[position.strategy || ''] || position.strategy || '-'}
+              </Text>
+            </View>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ color: pnlColor, fontSize: 17, fontWeight: '800' }}>
+              {formatPct(position.unrealized_pnl_pct)}
+            </Text>
+            <Text style={{ color: pnlColor, fontSize: 12, marginTop: 2 }}>
+              {position.unrealized_pnl >= 0 ? '+' : ''}{formatKRW(position.unrealized_pnl)}
             </Text>
           </View>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ color: pnlColor, fontSize: 16, fontWeight: '700' }}>
-            {formatPct(position.unrealized_pnl_pct)}
-          </Text>
-          <Text style={{ color: pnlColor, fontSize: 12 }}>
-            {position.unrealized_pnl >= 0 ? '+' : ''}{formatKRW(position.unrealized_pnl)}
-          </Text>
-        </View>
-      </View>
 
-      {/* 하단: 상세 정보 */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 12 }}>
-        <Text style={{ color: colors.muted, fontSize: 11 }}>
-          {formatPrice(position.avg_price)} → {formatPrice(position.current_price)}
-        </Text>
-        <Text style={{ color: colors.muted, fontSize: 11 }}>
-          {position.quantity}주
-        </Text>
-        <View style={{
-          paddingHorizontal: 6,
-          paddingVertical: 2,
-          borderRadius: 4,
-          backgroundColor: exitState.bg,
-        }}>
-          <Text style={{ color: exitState.text, fontSize: 10, fontWeight: '600' }}>
-            {exitState.label}
+        {/* 하단: 상세 정보 */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 12 }}>
+          <Text style={{ color: colors.muted, fontSize: 11 }}>
+            {formatPrice(position.avg_price)} → {formatPrice(position.current_price)}
           </Text>
+          <Text style={{ color: colors.muted, fontSize: 11 }}>
+            {position.quantity}주
+          </Text>
+          <View style={{
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 4,
+            backgroundColor: exitState.bg,
+          }}>
+            <Text style={{ color: exitState.text, fontSize: 10, fontWeight: '600' }}>
+              {exitState.label}
+            </Text>
+          </View>
         </View>
       </View>
     </TouchableOpacity>
@@ -277,12 +295,14 @@ function PositionCards({ positions, onPress, colors }: {
     );
   }
 
+  const sorted = [...positions].sort((a, b) => (b.unrealized_pnl_pct ?? 0) - (a.unrealized_pnl_pct ?? 0));
+
   return (
     <View style={{ marginBottom: 4 }}>
       <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground, marginHorizontal: 16, marginBottom: 10 }}>
         보유 포지션
       </Text>
-      {positions.map((p) => (
+      {sorted.map((p) => (
         <PositionCard
           key={p.symbol}
           position={p}
@@ -336,7 +356,11 @@ function ExternalAccountsSection({ accounts, colors }: { accounts: ExternalAccou
         </Text>
       </TouchableOpacity>
 
-      {expanded && accounts.map((account, idx) => {
+      {expanded && [...accounts].sort((a, b) => {
+        const aPnl = (a.summary?.purchase_amount ?? 0) > 0 ? ((a.summary?.unrealized_pnl ?? 0) / a.summary!.purchase_amount) * 100 : 0;
+        const bPnl = (b.summary?.purchase_amount ?? 0) > 0 ? ((b.summary?.unrealized_pnl ?? 0) / b.summary!.purchase_amount) * 100 : 0;
+        return bPnl - aPnl;
+      }).map((account, idx) => {
         const unrealizedPnl = account.summary?.unrealized_pnl ?? 0;
         const totalEquity = account.summary?.total_equity ?? 0;
         const purchaseAmount = account.summary?.purchase_amount ?? 0;

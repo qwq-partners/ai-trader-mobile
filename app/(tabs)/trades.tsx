@@ -409,6 +409,11 @@ function TradeList({
     );
   }
 
+  // 청산 거래: 수익률 내림차순, 미청산 거래: 아래로 분리
+  const closed = trades.filter((t) => t.exit_time != null).sort((a, b) => (b.pnl_pct ?? 0) - (a.pnl_pct ?? 0));
+  const open = trades.filter((t) => t.exit_time == null);
+  const sorted = [...closed, ...open];
+
   return (
     <View style={{ marginTop: 12 }}>
       <Text
@@ -423,7 +428,7 @@ function TradeList({
         거래 내역
       </Text>
       <FlatList
-        data={trades}
+        data={sorted}
         scrollEnabled={false}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (

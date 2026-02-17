@@ -206,7 +206,7 @@ function ReviewContent({ review, colors }: { review: DailyReviewData; colors: Th
           <Text style={{ fontSize: 15, fontWeight: '700', color: colors.foreground, marginHorizontal: 16, marginBottom: 8 }}>
             거래 복기
           </Text>
-          {tradeReport.trades.map((trade: any, idx: number) => {
+          {[...tradeReport.trades].sort((a: any, b: any) => (b.pnl_pct ?? 0) - (a.pnl_pct ?? 0)).map((trade: any, idx: number) => {
             const isExpanded = expandedTrade === idx;
             const tradePnl = trade.pnl ?? 0;
             const tradePnlPct = trade.pnl_pct ?? 0;

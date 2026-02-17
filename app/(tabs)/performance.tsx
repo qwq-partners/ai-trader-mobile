@@ -269,7 +269,7 @@ const STRATEGY_LABELS: Record<string, string> = {
 function StrategyCards({ stats, isDemo }: { stats: TradeStats | null; isDemo: boolean }) {
   const colors = useColors();
 
-  const strategies = isDemo
+  const strategies = (isDemo
     ? DEMO_STRATEGIES
     : stats
       ? Object.entries(stats.by_strategy).map(([name, data]) => ({
@@ -280,7 +280,8 @@ function StrategyCards({ stats, isDemo }: { stats: TradeStats | null; isDemo: bo
           win_rate: data.win_rate,
           total_pnl: data.total_pnl,
         }))
-      : [];
+      : []
+  ).sort((a, b) => b.total_pnl - a.total_pnl);
 
   return (
     <View style={{ marginHorizontal: 16, marginBottom: 12 }}>

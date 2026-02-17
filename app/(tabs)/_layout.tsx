@@ -1,12 +1,17 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useColors } from '@/hooks/use-colors';
 
 export default function TabLayout() {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
+
+  // 가상키 영역(insets.bottom)만큼 패딩 확보
+  const bottomPadding = Math.max(insets.bottom, 8);
 
   return (
     <Tabs
@@ -19,13 +24,17 @@ export default function TabLayout() {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 0.5,
-          height: Platform.OS === 'ios' ? 85 : 65,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 8,
-          paddingTop: 8,
+          height: 56 + bottomPadding,
+          paddingBottom: bottomPadding,
+          paddingTop: 6,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
+          marginTop: -2,
+        },
+        tabBarIconStyle: {
+          marginBottom: -2,
         },
       }}
     >
@@ -33,8 +42,8 @@ export default function TabLayout() {
         name="index"
         options={{
           title: '실시간',
-          tabBarIcon: ({ color, size }) => (
-            <IconSymbol name="dashboard" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <IconSymbol name="dashboard" size={20} color={color} />
           ),
         }}
       />
@@ -42,8 +51,8 @@ export default function TabLayout() {
         name="trades"
         options={{
           title: '거래',
-          tabBarIcon: ({ color, size }) => (
-            <IconSymbol name="receipt-long" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <IconSymbol name="receipt-long" size={20} color={color} />
           ),
         }}
       />
@@ -51,8 +60,8 @@ export default function TabLayout() {
         name="performance"
         options={{
           title: '성과',
-          tabBarIcon: ({ color, size }) => (
-            <IconSymbol name="trending-up" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <IconSymbol name="trending-up" size={20} color={color} />
           ),
         }}
       />
@@ -60,8 +69,8 @@ export default function TabLayout() {
         name="review"
         options={{
           title: '리뷰',
-          tabBarIcon: ({ color, size }) => (
-            <IconSymbol name="psychology" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <IconSymbol name="psychology" size={20} color={color} />
           ),
         }}
       />
@@ -69,8 +78,8 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: '설정',
-          tabBarIcon: ({ color, size }) => (
-            <IconSymbol name="settings" size={size} color={color} />
+          tabBarIcon: ({ color }) => (
+            <IconSymbol name="settings" size={20} color={color} />
           ),
         }}
       />
