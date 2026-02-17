@@ -394,7 +394,9 @@ function DailyReviewView({ colors }: { colors: ThemeColors }) {
       const resp = await apiClient.getDailyReviewDates();
       setAvailableDates(resp.dates || []);
       if (resp.dates?.length > 0) loadReview(resp.dates[0]);
-    } catch {}
+    } catch (e) {
+      console.warn('[Review] 날짜 목록 로드 실패:', e);
+    }
   };
 
   const loadReview = async (date: string) => {
@@ -402,7 +404,9 @@ function DailyReviewView({ colors }: { colors: ThemeColors }) {
     try {
       const data = await apiClient.getDailyReview(date);
       setReview(data);
-    } catch {}
+    } catch (e) {
+      console.warn('[Review] 리뷰 로드 실패:', e);
+    }
     setLoading(false);
   };
 
@@ -685,7 +689,9 @@ function EvolutionHistoryView({ colors }: { colors: ThemeColors }) {
       ]);
       setEvolution(evo);
       setHistory(hist);
-    } catch {}
+    } catch (e) {
+      console.warn('[Review] 진화 데이터 로드 실패:', e);
+    }
     setLoading(false);
   };
 

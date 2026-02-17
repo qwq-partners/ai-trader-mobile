@@ -630,7 +630,8 @@ export default function TradesScreen() {
         ? await apiClient.getTodayTrades()
         : await apiClient.getTrades(dateStr);
       setTrades(data);
-    } catch {
+    } catch (e) {
+      console.warn('[Trades] 거래 내역 로드 실패:', e);
       setTrades([]);
     }
     setLoading(false);

@@ -420,7 +420,7 @@ export default function SettingsScreen() {
   useEffect(() => {
     notificationManager.loadSettings().then(setNotifSettings);
     if (!state.isDemo) {
-      apiClient.getConfig().then(setConfig).catch(() => {});
+      apiClient.getConfig().then(setConfig).catch((e) => console.warn('[Settings] 설정 로드 실패:', e));
     }
   }, [state.isDemo]);
 
@@ -431,7 +431,8 @@ export default function SettingsScreen() {
       await apiClient.setServerUrl(serverUrl);
       const result = await apiClient.testConnection();
       setTestResult(result);
-    } catch {
+    } catch (e) {
+      console.warn('[Settings] 연결 테스트 실패:', e);
       setTestResult({ connected: false, latencyMs: 0 });
     }
     setTesting(false);

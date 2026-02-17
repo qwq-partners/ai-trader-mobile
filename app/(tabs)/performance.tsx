@@ -12,6 +12,7 @@ import { useTradingData } from '@/lib/trading-data-provider';
 import { apiClient } from '@/lib/api-client';
 import type { TradeStats, EquityHistoryResponse, EquitySnapshot, PositionSnapshot } from '@/lib/api-client';
 import { DEMO_STRATEGIES, formatKRW, formatPct, formatHoldingTime } from '@/lib/demo-data';
+import { INITIAL_CAPITAL } from '@/shared/const';
 import { ScreenContainer } from '@/components/screen-container';
 import { EquityChart } from '@/components/equity-chart';
 import { useColors } from '@/hooks/use-colors';
@@ -45,7 +46,7 @@ const DEMO_STATS: TradeStats = {
 const DEMO_EQUITY_SNAPSHOTS: EquitySnapshot[] = Array.from({ length: 14 }, (_, i) => {
   const date = new Date(Date.now() - (13 - i) * 86400000);
   const dateStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-  const baseEquity = 10_000_000 + i * 18000 + (Math.random() - 0.4) * 50000;
+  const baseEquity = INITIAL_CAPITAL + i * 18000 + (Math.random() - 0.4) * 50000;
   const dailyPnl = (Math.random() - 0.4) * 80000;
   return {
     date: dateStr,
@@ -67,7 +68,7 @@ const DEMO_EQUITY_SUMMARY: EquityHistoryResponse['summary'] = {
   period_return_pct: 2.35,
   max_drawdown_pct: -3.2,
   avg_daily_pnl: 18500,
-  first_equity: 10_000_000,
+  first_equity: INITIAL_CAPITAL,
   last_equity: 10_234_500,
   data_days: 14,
   oldest_date: '2026-02-01',
@@ -370,8 +371,8 @@ function AnalysisView() {
       ]);
       setStats(statsData);
       setEquityData(equityResp.snapshots);
-    } catch {
-      // 에러 시 기존 데이터 유지
+    } catch (e) {
+      console.warn('[Performance] 성과 데이터 로드 실패:', e);
     }
     setLoading(false);
   };
@@ -691,8 +692,8 @@ function EquityHistoryView() {
     try {
       const data = await apiClient.getEquityHistory(period);
       setHistoryData(data);
-    } catch {
-      // 에러 시 기존 데이터 유지
+    } catch (e) {
+      console.warn('[Performance] 자산 히스토리 로드 실패:', e);
     }
     setLoading(false);
   };
@@ -706,7 +707,8 @@ function EquityHistoryView() {
     try {
       const positions = await apiClient.getEquityPositions(date);
       setDatePositions(positions);
-    } catch {
+    } catch (e) {
+      console.warn('[Performance] 포지션 로드 실패:', e);
       setDatePositions([]);
     }
   };

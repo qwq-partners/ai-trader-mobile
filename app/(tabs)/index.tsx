@@ -669,7 +669,9 @@ export default function RealtimeScreen() {
         const [t, s] = await Promise.all([apiClient.getThemes(), apiClient.getScreening()]);
         setThemes(t);
         setScreening(s);
-      } catch {}
+      } catch (e) {
+        console.warn('[Dashboard] 테마/스크리닝 로드 실패:', e);
+      }
     }
     setRefreshing(false);
   };
@@ -690,7 +692,7 @@ export default function RealtimeScreen() {
     if (!state.isDemo) {
       Promise.all([apiClient.getThemes(), apiClient.getScreening()])
         .then(([t, s]) => { setThemes(t); setScreening(s); })
-        .catch(() => {});
+        .catch((e) => console.warn('[Dashboard] 초기 테마/스크리닝 로드 실패:', e));
     }
   }, [state.isDemo]);
 

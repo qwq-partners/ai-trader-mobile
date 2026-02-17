@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer, useCallback, useRef, useEffect } from 'react';
 import { apiClient, sseClient, type SSEMessage } from '@/lib/api-client';
+import { DEFAULT_SERVER_URL } from '@/shared/const';
 import type {
   PortfolioData, StatusData, PositionData, RiskData,
   TradeData, EventData, PendingOrder, ExternalAccount,
@@ -36,7 +37,7 @@ const initialState: TradingState = {
   connected: false,
   connecting: false,
   isDemo: true,
-  serverUrl: 'https://qwq.ai.kr',
+  serverUrl: DEFAULT_SERVER_URL,
   lastError: null,
   lastUpdated: null,
   portfolio: null,
@@ -220,7 +221,9 @@ export function TradingDataProvider({ children }: { children: React.ReactNode })
       dispatch({ type: 'UPDATE_POSITIONS', data: positions });
       dispatch({ type: 'UPDATE_RISK', data: risk });
       dispatch({ type: 'UPDATE_TODAY_TRADES', data: todayTrades });
-    } catch {}
+    } catch (e) {
+      console.warn('[Provider] refresh 실패:', e);
+    }
   }, [state.connected]);
 
   const setDemoMode = useCallback((isDemo: boolean) => {
@@ -243,7 +246,9 @@ export function TradingDataProvider({ children }: { children: React.ReactNode })
         if (result.connected) {
           await connect();
         }
-      } catch {}
+      } catch (e) {
+        console.warn('[Provider] 자동 연결 실패:', e);
+      }
     })();
     return () => {
       sseClient.stop();

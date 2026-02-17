@@ -1,6 +1,10 @@
 import axios, { AxiosInstance } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import {
+  DEFAULT_SERVER_URL, API_TIMEOUT_MS, SSE_RECONNECT_DELAY_MS,
+  POLLING_INTERVAL_MS, STORAGE_KEYS,
+} from '@/shared/const';
 
 // =============================================================================
 // Type Definitions (서버 응답 1:1 매칭)
@@ -312,9 +316,7 @@ export interface PositionSnapshot {
 // API Client
 // =============================================================================
 
-const STORAGE_KEY_SERVER_URL = '@ai_trader_server_url';
-const DEFAULT_SERVER_URL = 'https://qwq.ai.kr';
-const API_TIMEOUT_MS = 10000;
+const STORAGE_KEY_SERVER_URL = STORAGE_KEYS.SERVER_URL;
 
 class ApiClient {
   private client: AxiosInstance;
@@ -333,8 +335,8 @@ class ApiClient {
       if (url) {
         this.baseUrl = url;
       }
-    } catch {
-      // AsyncStorage 접근 실패 시 기본값 유지
+    } catch (e) {
+      console.warn('[ApiClient] AsyncStorage 접근 실패:', e);
     }
     return this.baseUrl;
   }
@@ -369,7 +371,7 @@ class ApiClient {
   }
 
   async getPositions(): Promise<PositionData[]> {
-    try { return await this.get('/api/positions'); } catch { return []; }
+    try { return await this.get('/api/positions'); } catch (e) { console.warn('[API] getPositions 실패:', e); return []; }
   }
 
   async getRisk(): Promise<RiskData> {
@@ -379,11 +381,11 @@ class ApiClient {
   // --- 거래 ---
 
   async getTodayTrades(): Promise<TradeData[]> {
-    try { return await this.get('/api/trades/today'); } catch { return []; }
+    try { return await this.get('/api/trades/today'); } catch (e) { console.warn('[API] getTodayTrades 실패:', e); return []; }
   }
 
   async getTrades(date: string): Promise<TradeData[]> {
-    try { return await this.get('/api/trades', { date }); } catch { return []; }
+    try { return await this.get('/api/trades', { date }); } catch (e) { console.warn('[API] getTrades 실패:', e); return []; }
   }
 
   async getTradeStats(days: number = 30): Promise<TradeStats> {
@@ -393,11 +395,11 @@ class ApiClient {
   // --- 테마/스크리닝 ---
 
   async getThemes(): Promise<ThemeData[]> {
-    try { return await this.get('/api/themes'); } catch { return []; }
+    try { return await this.get('/api/themes'); } catch (e) { console.warn('[API] getThemes 실패:', e); return []; }
   }
 
   async getScreening(): Promise<ScreeningItem[]> {
-    try { return await this.get('/api/screening'); } catch { return []; }
+    try { return await this.get('/api/screening'); } catch (e) { console.warn('[API] getScreening 실패:', e); return []; }
   }
 
   // --- 설정/진화 ---
@@ -411,7 +413,7 @@ class ApiClient {
   }
 
   async getEvolutionHistory(): Promise<EvolutionHistoryItem[]> {
-    try { return await this.get('/api/evolution/history'); } catch { return []; }
+    try { return await this.get('/api/evolution/history'); } catch (e) { console.warn('[API] getEvolutionHistory 실패:', e); return []; }
   }
 
   async applyEvolution(body: { strategy: string; parameter: string; new_value: any; reason?: string }): Promise<{ success: boolean; message: string }> {
@@ -421,7 +423,7 @@ class ApiClient {
   // --- 자산 히스토리 ---
 
   async getEquityCurve(days: number = 30): Promise<EquityCurvePoint[]> {
-    try { return await this.get('/api/equity-curve', { days }); } catch { return []; }
+    try { return await this.get('/api/equity-curve', { days }); } catch (e) { console.warn('[API] getEquityCurve 실패:', e); return []; }
   }
 
   async getEquityHistory(days: number = 30): Promise<EquityHistoryResponse> {
@@ -433,7 +435,7 @@ class ApiClient {
   }
 
   async getEquityPositions(date: string): Promise<PositionSnapshot[]> {
-    try { return await this.get('/api/equity-history/positions', { date }); } catch { return []; }
+    try { return await this.get('/api/equity-history/positions', { date }); } catch (e) { console.warn('[API] getEquityPositions 실패:', e); return []; }
   }
 
   // --- 일일 리뷰 ---
@@ -449,27 +451,27 @@ class ApiClient {
   // --- 모니터링/주문 ---
 
   async getHealthChecks(): Promise<HealthCheck[]> {
-    try { return await this.get('/api/health-checks'); } catch { return []; }
+    try { return await this.get('/api/health-checks'); } catch (e) { console.warn('[API] getHealthChecks 실패:', e); return []; }
   }
 
   async getPendingOrders(): Promise<PendingOrder[]> {
-    try { return await this.get('/api/orders/pending'); } catch { return []; }
+    try { return await this.get('/api/orders/pending'); } catch (e) { console.warn('[API] getPendingOrders 실패:', e); return []; }
   }
 
   async getOrderHistory(): Promise<OrderEvent[]> {
-    try { return await this.get('/api/orders/history'); } catch { return []; }
+    try { return await this.get('/api/orders/history'); } catch (e) { console.warn('[API] getOrderHistory 실패:', e); return []; }
   }
 
   // --- 외부 계좌 ---
 
   async getExternalAccounts(): Promise<ExternalAccount[]> {
-    try { return await this.get('/api/accounts/positions'); } catch { return []; }
+    try { return await this.get('/api/accounts/positions'); } catch (e) { console.warn('[API] getExternalAccounts 실패:', e); return []; }
   }
 
   // --- 이벤트 ---
 
   async getEvents(sinceId?: number): Promise<EventData[]> {
-    try { return await this.get('/api/events', sinceId ? { since: sinceId } : undefined); } catch { return []; }
+    try { return await this.get('/api/events', sinceId ? { since: sinceId } : undefined); } catch (e) { console.warn('[API] getEvents 실패:', e); return []; }
   }
 
   // --- 연결 테스트 ---
@@ -479,7 +481,8 @@ class ApiClient {
     try {
       await this.getStatus();
       return { connected: true, latencyMs: Date.now() - start };
-    } catch {
+    } catch (e) {
+      console.warn('[API] testConnection 실패:', e);
       return { connected: false, latencyMs: Date.now() - start };
     }
   }
@@ -554,23 +557,25 @@ class SSEClient {
           try {
             const data = JSON.parse(event.data);
             this.emit({ type, data });
-          } catch {
-            // JSON 파싱 실패 무시
+          } catch (e) {
+            console.warn('[SSE] JSON 파싱 실패:', e);
           }
         }) as EventListener);
       });
 
       this.eventSource.onerror = () => {
         if (this.isRunning) {
+          console.warn('[SSE] EventSource 연결 끊김, 재연결 시도...');
           this.eventSource?.close();
           setTimeout(() => {
             if (this.isRunning) this.startEventSource(baseUrl);
-          }, 5000);
+          }, SSE_RECONNECT_DELAY_MS);
         }
       };
-    } catch {
+    } catch (e) {
+      console.warn('[SSE] EventSource 시작 실패:', e);
       if (this.isRunning) {
-        setTimeout(() => this.startEventSource(baseUrl), 5000);
+        setTimeout(() => this.startEventSource(baseUrl), SSE_RECONNECT_DELAY_MS);
       }
     }
   }
@@ -603,15 +608,17 @@ class SSEClient {
           try {
             const accounts = await apiClient.getExternalAccounts();
             this.emit({ type: 'external_accounts', data: accounts });
-          } catch {}
+          } catch (e) {
+            console.warn('[SSE] 외부 계좌 폴링 실패:', e);
+          }
         }
-      } catch {
-        // 폴링 실패 무시 — 다음 주기에 재시도
+      } catch (e) {
+        console.warn('[SSE] 폴링 실패:', e);
       }
     };
 
     poll();
-    this.pollTimer = setInterval(poll, 3000);
+    this.pollTimer = setInterval(poll, POLLING_INTERVAL_MS);
   }
 
   stop() {

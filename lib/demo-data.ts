@@ -3,8 +3,7 @@ import type {
   TradeData, EventData, ThemeData, PendingOrder,
   ScreeningItem, EvolutionData, EvolutionHistoryItem,
 } from '@/lib/api-client';
-
-const INITIAL_CAPITAL = 10_000_000;
+import { INITIAL_CAPITAL } from '@/shared/const';
 
 export const DEMO_PORTFOLIO: PortfolioData = {
   cash: 5_120_000,

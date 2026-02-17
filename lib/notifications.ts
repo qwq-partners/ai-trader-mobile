@@ -2,8 +2,9 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import type { EventData } from '@/lib/api-client';
+import { STORAGE_KEYS } from '@/shared/const';
 
-const STORAGE_KEY = '@ai_trader_notifications';
+const STORAGE_KEY = STORAGE_KEYS.NOTIFICATION_SETTINGS;
 
 interface NotificationSettings {
   trade_fill: boolean;
@@ -81,7 +82,9 @@ class NotificationManager {
       if (stored) {
         this.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[Notification] 설정 로드 실패:', e);
+    }
     return this.settings;
   }
 
@@ -148,7 +151,9 @@ class NotificationManager {
         },
         trigger: null, // 즉시 발송
       });
-    } catch {}
+    } catch (e) {
+      console.warn('[Notification] 발송 실패:', e);
+    }
   }
 }
 
