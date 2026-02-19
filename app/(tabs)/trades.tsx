@@ -295,6 +295,7 @@ function classifyExitType(event: TradeEventData): string {
   if (exitType.includes('stop') || reason.includes('손절')) return 'stop';
   if (exitType.includes('first') || reason.includes('1차')) return 'first';
   if (exitType.includes('second') || reason.includes('2차')) return 'second';
+  if (exitType.includes('third') || reason.includes('3차')) return 'third';
   if (exitType.includes('trailing') || reason.includes('트레일링')) return 'trailing';
   if (exitType.includes('breakeven') || reason.includes('본전')) return 'breakeven';
   if (exitType.includes('take_profit') || reason.includes('익절')) return 'profit';
@@ -310,6 +311,7 @@ function ExitTypeBar({ events }: { events: TradeEventData[] }) {
       stop: { label: '손절', color: colors.error, count: 0 },
       first: { label: '1차익절', color: colors.primary, count: 0 },
       second: { label: '2차익절', color: '#22d3ee', count: 0 },
+      third: { label: '3차익절', color: '#a78bfa', count: 0 },
       profit: { label: '익절', color: colors.profit, count: 0 },
       trailing: { label: '트레일링', color: '#fbbf24', count: 0 },
       breakeven: { label: '본전', color: '#fbbf24', count: 0 },
