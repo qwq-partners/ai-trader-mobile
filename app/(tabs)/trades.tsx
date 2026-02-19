@@ -9,8 +9,8 @@ import {
 } from 'react-native';
 import { useTradingData } from '@/lib/trading-data-provider';
 import { apiClient } from '@/lib/api-client';
-import type { TradeData } from '@/lib/api-client';
-import { DEMO_TRADES, formatKRW, formatPct, formatPrice, formatTime, formatHoldingTime } from '@/lib/demo-data';
+import type { TradeEventData } from '@/lib/api-client';
+import { DEMO_TRADE_EVENTS, formatKRW, formatPct, formatPrice } from '@/lib/demo-data';
 import { ScreenContainer } from '@/components/screen-container';
 import { useColors } from '@/hooks/use-colors';
 import { toDateString } from '@/lib/utils';
@@ -115,37 +115,133 @@ function DateNavigator({
 }
 
 // =============================================================================
+// FilterTabs
+// =============================================================================
+
+type FilterType = 'all' | 'buy' | 'sell';
+
+function FilterTabs({
+  current,
+  counts,
+  onChange,
+}: {
+  current: FilterType;
+  counts: { all: number; buy: number; sell: number };
+  onChange: (t: FilterType) => void;
+}) {
+  const colors = useColors();
+  const tabs: { key: FilterType; label: string }[] = [
+    { key: 'all', label: '전체' },
+    { key: 'buy', label: '매수' },
+    { key: 'sell', label: '매도' },
+  ];
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        marginHorizontal: 16,
+        marginTop: 12,
+        gap: 8,
+      }}
+    >
+      {tabs.map((tab) => {
+        const active = current === tab.key;
+        const count = counts[tab.key];
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => onChange(tab.key)}
+            style={{
+              backgroundColor: active ? colors.primary : colors.surface,
+              borderRadius: 8,
+              paddingVertical: 8,
+              paddingHorizontal: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Text
+              style={{
+                color: active ? '#fff' : colors.muted,
+                fontSize: 13,
+                fontWeight: '600',
+              }}
+            >
+              {tab.label}
+            </Text>
+            <View
+              style={{
+                backgroundColor: active ? 'rgba(255,255,255,0.2)' : colors.elevated,
+                borderRadius: 10,
+                paddingHorizontal: 6,
+                paddingVertical: 1,
+                minWidth: 20,
+                alignItems: 'center',
+              }}
+            >
+              <Text
+                style={{
+                  color: active ? '#fff' : colors.muted,
+                  fontSize: 11,
+                  fontWeight: '700',
+                }}
+              >
+                {count}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+// =============================================================================
 // DailySummary
 // =============================================================================
 
-function DailySummary({ trades }: { trades: TradeData[] }) {
+function DailySummary({ events }: { events: TradeEventData[] }) {
   const colors = useColors();
 
   const stats = useMemo(() => {
-    // 저널 포맷: 청산된 거래만 통계에 포함
-    const closedTrades = trades.filter((t) => t.exit_time != null);
-    const wins = closedTrades.filter((t) => t.pnl > 0);
-    const winRate = closedTrades.length > 0 ? (wins.length / closedTrades.length) * 100 : 0;
-    const totalPnl = closedTrades.reduce((sum, t) => sum + t.pnl, 0);
+    const buys = events.filter((e) => e.event_type === 'BUY');
+    const sells = events.filter((e) => e.event_type === 'SELL');
+    const holding = buys.filter((e) => e.status === 'holding');
+
+    const sellPnl = sells.reduce((s, e) => s + (e.pnl || 0), 0);
+    const holdPnl = holding.reduce((s, e) => s + (e.pnl || 0), 0);
+    const totalPnl = sellPnl + holdPnl;
+
+    const withPnl = [...sells, ...holding].filter((e) => e.pnl != null && e.pnl !== 0);
     const avgPnlPct =
-      closedTrades.length > 0
-        ? closedTrades.reduce((sum, t) => sum + t.pnl_pct, 0) / closedTrades.length
+      withPnl.length > 0
+        ? withPnl.reduce((s, e) => s + (e.pnl_pct || 0), 0) / withPnl.length
         : 0;
 
+    const wins = sells.filter((e) => (e.pnl || 0) > 0);
+    const winRate = sells.length > 0 ? (wins.length / sells.length) * 100 : 0;
+
     return {
-      tradeCount: trades.length,
-      closedCount: closedTrades.length,
+      tradeCount: buys.length,
+      holdingCount: holding.length,
+      sellCount: sells.length,
       winRate,
       totalPnl,
       avgPnlPct,
     };
-  }, [trades]);
+  }, [events]);
 
   const items = [
-    { label: '거래수', value: `${stats.tradeCount}건`, color: colors.foreground },
+    {
+      label: '거래수',
+      value: stats.holdingCount > 0 ? `${stats.tradeCount}건 (보유${stats.holdingCount})` : `${stats.tradeCount}건`,
+      color: colors.foreground,
+    },
     {
       label: '승률',
-      value: stats.closedCount > 0 ? `${stats.winRate.toFixed(1)}%` : '-',
+      value: stats.sellCount > 0 ? `${stats.winRate.toFixed(1)}%` : '-',
       color: stats.winRate >= 50 ? colors.profit : stats.winRate > 0 ? colors.loss : colors.muted,
     },
     {
@@ -155,7 +251,7 @@ function DailySummary({ trades }: { trades: TradeData[] }) {
     },
     {
       label: '평균수익률',
-      value: stats.closedCount > 0 ? formatPct(stats.avgPnlPct) : '-',
+      value: stats.avgPnlPct !== 0 ? formatPct(stats.avgPnlPct) : '-',
       color: stats.avgPnlPct > 0 ? colors.profit : stats.avgPnlPct < 0 ? colors.loss : colors.muted,
     },
   ];
@@ -192,42 +288,48 @@ interface ExitCategory {
   count: number;
 }
 
-function classifyExitType(trade: TradeData): string {
-  const reason = (trade.exit_reason ?? '').toLowerCase();
-  const exitType = (trade.exit_type ?? '').toLowerCase();
-  if (reason.includes('손절') || reason.includes('stop') || exitType === 'stop_loss') return 'stop';
-  if (reason.includes('1차') || reason.includes('first') || exitType === 'first_exit') return 'first';
-  if (reason.includes('트레일링') || reason.includes('trailing') || exitType === 'trailing') return 'trailing';
+function classifyExitType(event: TradeEventData): string {
+  const exitType = (event.exit_type ?? '').toLowerCase();
+  const reason = (event.exit_reason ?? '').toLowerCase();
+
+  if (exitType.includes('stop') || reason.includes('손절')) return 'stop';
+  if (exitType.includes('first') || reason.includes('1차')) return 'first';
+  if (exitType.includes('second') || reason.includes('2차')) return 'second';
+  if (exitType.includes('trailing') || reason.includes('트레일링')) return 'trailing';
+  if (exitType.includes('breakeven') || reason.includes('본전')) return 'breakeven';
+  if (exitType.includes('take_profit') || reason.includes('익절')) return 'profit';
   return 'other';
 }
 
-function ExitTypeBar({ trades }: { trades: TradeData[] }) {
+function ExitTypeBar({ events }: { events: TradeEventData[] }) {
   const colors = useColors();
-  const closedTrades = trades.filter((t) => t.exit_time != null);
+  const sells = events.filter((e) => e.event_type === 'SELL');
 
   const categories = useMemo((): ExitCategory[] => {
     const map: Record<string, ExitCategory> = {
       stop: { label: '손절', color: colors.error, count: 0 },
-      first: { label: '1차 익절', color: colors.primary, count: 0 },
-      trailing: { label: '트레일링', color: colors.profit, count: 0 },
+      first: { label: '1차익절', color: colors.primary, count: 0 },
+      second: { label: '2차익절', color: '#22d3ee', count: 0 },
+      profit: { label: '익절', color: colors.profit, count: 0 },
+      trailing: { label: '트레일링', color: '#fbbf24', count: 0 },
+      breakeven: { label: '본전', color: '#fbbf24', count: 0 },
       other: { label: '기타', color: colors.muted, count: 0 },
     };
 
-    closedTrades.forEach((t) => {
-      const type = classifyExitType(t);
+    sells.forEach((e) => {
+      const type = classifyExitType(e);
       map[type].count++;
     });
 
     return Object.values(map).filter((c) => c.count > 0);
-  }, [closedTrades, colors]);
+  }, [sells, colors]);
 
-  if (closedTrades.length === 0) return null;
+  if (sells.length === 0) return null;
 
-  const total = closedTrades.length;
+  const total = sells.length;
 
   return (
     <View style={{ marginHorizontal: 16, marginTop: 12 }}>
-      {/* Bar */}
       <View
         style={{
           flexDirection: 'row',
@@ -248,7 +350,6 @@ function ExitTypeBar({ trades }: { trades: TradeData[] }) {
         ))}
       </View>
 
-      {/* Legend */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, gap: 12 }}>
         {categories.map((cat, i) => (
           <View key={i} style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -272,7 +373,7 @@ function ExitTypeBar({ trades }: { trades: TradeData[] }) {
 }
 
 // =============================================================================
-// TradeList
+// Status / Strategy Labels
 // =============================================================================
 
 const STRATEGY_LABELS: Record<string, string> = {
@@ -286,20 +387,45 @@ function strategyLabel(strategy: string): string {
   return STRATEGY_LABELS[strategy] ?? strategy;
 }
 
-function TradeCard({
-  trade,
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  holding: { label: '보유중', color: '#60a5fa' },
+  partial: { label: '부분매도', color: '#fbbf24' },
+  take_profit: { label: '익절', color: '#34d399' },
+  first_take_profit: { label: '1차익절', color: '#34d399' },
+  second_take_profit: { label: '2차익절', color: '#22d3ee' },
+  third_take_profit: { label: '3차익절', color: '#22d3ee' },
+  trailing: { label: '트레일링', color: '#fbbf24' },
+  breakeven: { label: '본전', color: '#fbbf24' },
+  stop_loss: { label: '손절', color: '#f87171' },
+  manual: { label: '수동', color: '#a78bfa' },
+  kis_sync: { label: '동기화', color: '#a78bfa' },
+  closed: { label: '청산', color: '#60a5fa' },
+  time_exit: { label: '시간청산', color: '#a78bfa' },
+};
+
+function formatEventTime(isoString: string): string {
+  const d = new Date(isoString);
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
+}
+
+// =============================================================================
+// EventCard
+// =============================================================================
+
+function EventCard({
+  event,
   onPress,
 }: {
-  trade: TradeData;
+  event: TradeEventData;
   onPress: () => void;
 }) {
   const colors = useColors();
-  const isClosed = trade.exit_time != null;
-  const barColor = isClosed
-    ? (trade.pnl >= 0 ? colors.success : colors.error)
-    : colors.info;
-  const pnlColor =
-    trade.pnl > 0 ? colors.profit : trade.pnl < 0 ? colors.loss : colors.muted;
+  const isBuy = event.event_type === 'BUY';
+  const pnl = event.pnl || 0;
+  const pnlPct = event.pnl_pct || 0;
+  const pnlColor = pnl > 0 ? colors.profit : pnl < 0 ? colors.loss : colors.muted;
+
+  const statusInfo = STATUS_LABELS[event.status] ?? { label: event.status, color: colors.muted };
 
   return (
     <TouchableOpacity
@@ -308,7 +434,7 @@ function TradeCard({
       style={{
         backgroundColor: colors.surface,
         borderRadius: 12,
-        padding: 16,
+        padding: 14,
         marginHorizontal: 16,
         marginBottom: 8,
         flexDirection: 'row',
@@ -319,100 +445,126 @@ function TradeCard({
         style={{
           width: 4,
           borderRadius: 2,
-          backgroundColor: barColor,
+          backgroundColor: isBuy ? colors.info : (pnl >= 0 ? colors.success : colors.error),
           marginRight: 12,
         }}
       />
 
       {/* Content */}
       <View style={{ flex: 1 }}>
-        {/* Header: name + strategy badge + status badge */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-          <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700', marginRight: 8 }}>
-            {trade.name}
+        {/* Header: time + name + type badge + strategy badge */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 4 }}>
+          <Text style={{ color: colors.muted, fontSize: 11, marginRight: 4 }}>
+            {formatEventTime(event.event_time)}
           </Text>
+          <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700', marginRight: 6 }}>
+            {event.name || event.symbol}
+          </Text>
+
+          {/* 매수/매도 배지 */}
           <View
             style={{
-              backgroundColor: colors.elevated,
+              backgroundColor: isBuy ? 'rgba(99,102,241,0.12)' : (pnl >= 0 ? 'rgba(52,211,153,0.15)' : 'rgba(248,113,113,0.15)'),
               borderRadius: 4,
               paddingVertical: 2,
               paddingHorizontal: 6,
             }}
           >
-            <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}>
-              {strategyLabel(trade.entry_strategy)}
+            <Text
+              style={{
+                color: isBuy ? colors.primary : (pnl >= 0 ? colors.profit : colors.error),
+                fontSize: 10,
+                fontWeight: '700',
+              }}
+            >
+              {isBuy ? '매수' : '매도'}
             </Text>
           </View>
-          <View
-            style={{
-              backgroundColor: isClosed ? 'rgba(248,113,113,0.15)' : 'rgba(96,165,250,0.15)',
-              borderRadius: 4,
-              paddingVertical: 2,
-              paddingHorizontal: 6,
-              marginLeft: 4,
-            }}
-          >
-            <Text style={{ color: isClosed ? colors.error : colors.info, fontSize: 10, fontWeight: '600' }}>
-              {isClosed ? '청산' : '보유중'}
-            </Text>
-          </View>
+
+          {/* 전략 배지 */}
+          {event.strategy && event.strategy !== 'unknown' && (
+            <View
+              style={{
+                backgroundColor: colors.elevated,
+                borderRadius: 4,
+                paddingVertical: 2,
+                paddingHorizontal: 6,
+              }}
+            >
+              <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}>
+                {strategyLabel(event.strategy)}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Price row */}
+        {/* Price + Qty row */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
           <Text style={{ color: colors.muted, fontSize: 13 }}>
-            {formatPrice(trade.entry_price)}원 x {trade.entry_quantity}주
+            {formatPrice(event.price)}원 x {event.quantity}주
           </Text>
-          {isClosed && trade.exit_price != null && (
-            <Text style={{ color: colors.muted, fontSize: 12, marginLeft: 8 }}>
-              ({formatPrice(trade.entry_price)} {'\u2192'} {formatPrice(trade.exit_price)})
+          {isBuy && event.current_price && event.status === 'holding' && (
+            <Text style={{ color: '#22d3ee', fontSize: 12, marginLeft: 8 }}>
+              {'\u2192'} {formatPrice(event.current_price)}원
             </Text>
           )}
         </View>
 
-        {/* PnL + holding_minutes row */}
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ color: pnlColor, fontSize: 14, fontWeight: '700', marginRight: 8 }}>
-            {trade.pnl > 0 ? '+' : ''}
-            {formatKRW(trade.pnl)} ({formatPct(trade.pnl_pct)})
-          </Text>
-          {trade.holding_minutes > 0 && (
-            <Text style={{ color: colors.muted, fontSize: 11 }}>
-              {formatHoldingTime(trade.holding_minutes)}
+        {/* PnL row + status badge */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {pnl !== 0 && (
+            <Text style={{ color: pnlColor, fontSize: 14, fontWeight: '700' }}>
+              {pnl > 0 ? '+' : ''}{formatKRW(pnl)} ({formatPct(pnlPct)})
             </Text>
           )}
+          <View
+            style={{
+              backgroundColor: `${statusInfo.color}20`,
+              borderRadius: 4,
+              paddingVertical: 2,
+              paddingHorizontal: 6,
+            }}
+          >
+            <Text style={{ color: statusInfo.color, fontSize: 10, fontWeight: '600' }}>
+              {statusInfo.label}
+            </Text>
+          </View>
         </View>
 
-        {/* Timestamp */}
-        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>
-          {formatTime(trade.entry_time)}
-        </Text>
+        {/* Exit reason */}
+        {!isBuy && event.exit_reason && (
+          <Text
+            style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}
+            numberOfLines={1}
+          >
+            {event.exit_reason}
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );
 }
 
-function TradeList({
-  trades,
+// =============================================================================
+// EventList
+// =============================================================================
+
+function EventList({
+  events,
   onPress,
 }: {
-  trades: TradeData[];
-  onPress: (trade: TradeData) => void;
+  events: TradeEventData[];
+  onPress: (event: TradeEventData) => void;
 }) {
   const colors = useColors();
 
-  if (trades.length === 0) {
+  if (events.length === 0) {
     return (
       <View style={{ alignItems: 'center', paddingVertical: 40 }}>
         <Text style={{ color: colors.muted, fontSize: 14 }}>거래 내역이 없습니다</Text>
       </View>
     );
   }
-
-  // 청산 거래: 수익률 내림차순, 미청산 거래: 아래로 분리
-  const closed = trades.filter((t) => t.exit_time != null).sort((a, b) => (b.pnl_pct ?? 0) - (a.pnl_pct ?? 0));
-  const open = trades.filter((t) => t.exit_time == null);
-  const sorted = [...closed, ...open];
 
   return (
     <View style={{ marginTop: 12 }}>
@@ -425,14 +577,14 @@ function TradeList({
           marginBottom: 12,
         }}
       >
-        거래 내역
+        거래 이벤트 로그
       </Text>
       <FlatList
-        data={sorted}
+        data={events}
         scrollEnabled={false}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => `${item.id}`}
         renderItem={({ item }) => (
-          <TradeCard trade={item} onPress={() => onPress(item)} />
+          <EventCard event={item} onPress={() => onPress(item)} />
         )}
       />
     </View>
@@ -440,7 +592,7 @@ function TradeList({
 }
 
 // =============================================================================
-// TradeDetailModal
+// EventDetailModal
 // =============================================================================
 
 function DetailRow({
@@ -472,27 +624,26 @@ function DetailRow({
   );
 }
 
-function TradeDetailModal({
-  trade,
+function EventDetailModal({
+  event,
   onClose,
 }: {
-  trade: TradeData;
+  event: TradeEventData;
   onClose: () => void;
 }) {
   const colors = useColors();
-  const isClosed = trade.exit_time != null;
-  const pnlColor =
-    trade.pnl > 0 ? colors.profit : trade.pnl < 0 ? colors.loss : colors.muted;
+  const isBuy = event.event_type === 'BUY';
+  const pnl = event.pnl || 0;
+  const pnlColor = pnl > 0 ? colors.profit : pnl < 0 ? colors.loss : colors.muted;
+  const statusInfo = STATUS_LABELS[event.status] ?? { label: event.status, color: colors.muted };
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      {/* Backdrop */}
       <TouchableOpacity
         activeOpacity={1}
         onPress={onClose}
         style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
       >
-        {/* Sheet */}
         <TouchableOpacity
           activeOpacity={1}
           onPress={() => {}}
@@ -522,63 +673,63 @@ function TradeDetailModal({
           {/* Header */}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
             <Text style={{ color: colors.foreground, fontSize: 20, fontWeight: '700', flex: 1 }}>
-              {trade.name}
+              {event.name || event.symbol}
             </Text>
             <View
               style={{
-                backgroundColor: colors.elevated,
+                backgroundColor: isBuy ? 'rgba(99,102,241,0.12)' : (pnl >= 0 ? 'rgba(52,211,153,0.15)' : 'rgba(248,113,113,0.15)'),
                 borderRadius: 6,
                 paddingVertical: 4,
                 paddingHorizontal: 8,
               }}
             >
-              <Text style={{ color: colors.muted, fontSize: 12, fontWeight: '600' }}>
-                {strategyLabel(trade.entry_strategy)}
+              <Text
+                style={{
+                  color: isBuy ? colors.primary : (pnl >= 0 ? colors.profit : colors.error),
+                  fontSize: 12,
+                  fontWeight: '700',
+                }}
+              >
+                {isBuy ? '매수' : '매도'}
               </Text>
             </View>
           </View>
 
           {/* Details */}
-          <DetailRow label="상태" value={isClosed ? '청산' : '보유중'} valueColor={isClosed ? colors.error : colors.info} />
-          <DetailRow label="종목코드" value={trade.symbol} />
-          <DetailRow label="진입수량" value={`${trade.entry_quantity}주`} />
-          <DetailRow label="진입가" value={`${formatPrice(trade.entry_price)}원`} />
-          <DetailRow label="진입금액" value={formatKRW(trade.entry_price * trade.entry_quantity)} />
+          <DetailRow label="상태" value={statusInfo.label} valueColor={statusInfo.color} />
+          <DetailRow label="종목코드" value={event.symbol} />
+          <DetailRow label="시간" value={formatEventTime(event.event_time)} />
+          <DetailRow label="가격" value={`${formatPrice(event.price)}원`} />
+          <DetailRow label="수량" value={`${event.quantity}주`} />
+          <DetailRow label="금액" value={formatKRW(event.price * event.quantity)} />
 
-          {isClosed && trade.exit_price != null && (
-            <>
-              <DetailRow
-                label="청산가"
-                value={`${formatPrice(trade.exit_price)}원`}
-              />
-              <DetailRow
-                label="청산수량"
-                value={`${trade.exit_quantity ?? trade.entry_quantity}주`}
-              />
-            </>
+          {event.strategy && event.strategy !== 'unknown' && (
+            <DetailRow label="전략" value={strategyLabel(event.strategy)} />
+          )}
+          {event.signal_score > 0 && (
+            <DetailRow label="시그널 점수" value={`${event.signal_score}`} />
           )}
 
-          <DetailRow
-            label="손익"
-            value={`${trade.pnl > 0 ? '+' : ''}${formatKRW(trade.pnl)} (${formatPct(trade.pnl_pct)})`}
-            valueColor={pnlColor}
-          />
-
-          {trade.entry_reason ? (
-            <DetailRow label="진입 사유" value={trade.entry_reason} />
-          ) : null}
-          {trade.exit_reason ? (
-            <DetailRow label="청산 사유" value={trade.exit_reason} />
-          ) : null}
-          {trade.exit_type ? (
-            <DetailRow label="청산 유형" value={trade.exit_type} />
-          ) : null}
-          {trade.holding_minutes > 0 && (
-            <DetailRow label="보유시간" value={formatHoldingTime(trade.holding_minutes)} />
+          {pnl !== 0 && (
+            <DetailRow
+              label="손익"
+              value={`${pnl > 0 ? '+' : ''}${formatKRW(pnl)} (${formatPct(event.pnl_pct || 0)})`}
+              valueColor={pnlColor}
+            />
           )}
-          <DetailRow label="진입시간" value={formatTime(trade.entry_time)} />
-          {trade.entry_signal_score > 0 && (
-            <DetailRow label="시그널 점수" value={`${trade.entry_signal_score}`} />
+
+          {isBuy && event.current_price && (
+            <DetailRow label="현재가" value={`${formatPrice(event.current_price)}원`} />
+          )}
+          {isBuy && event.entry_price && (
+            <DetailRow label="진입가" value={`${formatPrice(event.entry_price)}원`} />
+          )}
+
+          {!isBuy && event.exit_type && (
+            <DetailRow label="청산 유형" value={event.exit_type} />
+          )}
+          {!isBuy && event.exit_reason && (
+            <DetailRow label="청산 사유" value={event.exit_reason} />
           )}
 
           {/* Close button */}
@@ -608,52 +759,92 @@ export default function TradesScreen() {
   const { state } = useTradingData();
   const colors = useColors();
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [trades, setTrades] = useState<TradeData[]>([]);
+  const [events, setEvents] = useState<TradeEventData[]>([]);
+  const [allEvents, setAllEvents] = useState<TradeEventData[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedTrade, setSelectedTrade] = useState<TradeData | null>(null);
+  const [filter, setFilter] = useState<FilterType>('all');
+  const [selectedEvent, setSelectedEvent] = useState<TradeEventData | null>(null);
 
-  // 날짜 변경 시 거래 로드
+  const counts = useMemo(() => ({
+    all: allEvents.length,
+    buy: allEvents.filter((e) => e.event_type === 'BUY').length,
+    sell: allEvents.filter((e) => e.event_type === 'SELL').length,
+  }), [allEvents]);
+
+  // 날짜 변경 시 거래 이벤트 로드
   useEffect(() => {
-    loadTrades();
+    loadEvents();
   }, [selectedDate, state.isDemo]);
 
-  const loadTrades = async () => {
+  // 필터 변경 시 재조회
+  useEffect(() => {
+    loadFilteredEvents();
+  }, [filter]);
+
+  const loadEvents = async () => {
     if (state.isDemo) {
-      setTrades(DEMO_TRADES);
+      setAllEvents(DEMO_TRADE_EVENTS);
+      setEvents(DEMO_TRADE_EVENTS);
+      setFilter('all');
       return;
     }
     setLoading(true);
     try {
       const dateStr = toDateString(selectedDate);
-      const isToday = dateStr === toDateString(new Date());
-      const data = isToday
-        ? await apiClient.getTodayTrades()
-        : await apiClient.getTrades(dateStr);
-      setTrades(data);
+      const data = await apiClient.getTradeEvents(dateStr, 'all');
+      setAllEvents(data);
+      if (filter === 'all') {
+        setEvents(data);
+      } else {
+        const filtered = await apiClient.getTradeEvents(dateStr, filter);
+        setEvents(filtered);
+      }
     } catch (e) {
-      console.warn('[Trades] 거래 내역 로드 실패:', e);
-      setTrades([]);
+      console.warn('[Trades] 거래 이벤트 로드 실패:', e);
+      setAllEvents([]);
+      setEvents([]);
     }
     setLoading(false);
   };
 
+  const loadFilteredEvents = async () => {
+    if (state.isDemo) {
+      if (filter === 'all') {
+        setEvents(DEMO_TRADE_EVENTS);
+      } else {
+        const type = filter === 'buy' ? 'BUY' : 'SELL';
+        setEvents(DEMO_TRADE_EVENTS.filter((e) => e.event_type === type));
+      }
+      return;
+    }
+    if (allEvents.length === 0 && events.length === 0) return;
+    try {
+      const dateStr = toDateString(selectedDate);
+      const data = await apiClient.getTradeEvents(dateStr, filter);
+      setEvents(data);
+    } catch (e) {
+      console.warn('[Trades] 거래 이벤트 필터 실패:', e);
+    }
+  };
+
   return (
-    <ScreenContainer refreshing={loading} onRefresh={loadTrades}>
+    <ScreenContainer refreshing={loading} onRefresh={loadEvents}>
       {state.isDemo && <DemoBadge />}
       <DateNavigator date={selectedDate} onChange={setSelectedDate} />
-      <DailySummary trades={trades} />
-      <ExitTypeBar trades={trades} />
+      <FilterTabs current={filter} counts={counts} onChange={setFilter} />
+      <DailySummary events={allEvents} />
+      <ExitTypeBar events={allEvents} />
 
       {loading ? (
         <View style={{ alignItems: 'center', paddingVertical: 40 }}>
           <ActivityIndicator color={colors.primary} size="small" />
         </View>
       ) : (
-        <TradeList trades={trades} onPress={setSelectedTrade} />
+        <EventList events={events} onPress={setSelectedEvent} />
       )}
 
-      {selectedTrade && (
-        <TradeDetailModal trade={selectedTrade} onClose={() => setSelectedTrade(null)} />
+      {selectedEvent && (
+        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
       )}
     </ScreenContainer>
   );

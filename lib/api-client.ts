@@ -290,6 +290,29 @@ export interface ExternalAccount {
   }>;
 }
 
+export interface TradeEventData {
+  id: number;
+  trade_id: string;
+  symbol: string;
+  name: string;
+  event_type: 'BUY' | 'SELL';
+  event_time: string;
+  price: number;
+  quantity: number;
+  exit_type: string | null;
+  exit_reason: string | null;
+  pnl: number | null;
+  pnl_pct: number | null;
+  strategy: string;
+  signal_score: number;
+  kis_order_no: string | null;
+  status: string;
+  created_at: string;
+  entry_price?: number;
+  entry_quantity?: number;
+  current_price?: number;
+}
+
 export interface OrderEvent {
   symbol: string;
   name: string;
@@ -390,6 +413,10 @@ class ApiClient {
 
   async getTradeStats(days: number = 30): Promise<TradeStats> {
     return this.get('/api/trades/stats', { days });
+  }
+
+  async getTradeEvents(date: string, type: 'all' | 'buy' | 'sell' = 'all'): Promise<TradeEventData[]> {
+    try { return await this.get('/api/trade-events', { date, type }); } catch (e) { console.warn('[API] getTradeEvents 실패:', e); return []; }
   }
 
   // --- 테마/스크리닝 ---
