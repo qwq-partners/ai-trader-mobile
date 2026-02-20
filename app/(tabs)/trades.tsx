@@ -212,47 +212,36 @@ function DailySummary({ events }: { events: TradeEventData[] }) {
 
     const sellPnl = sells.reduce((s, e) => s + (e.pnl || 0), 0);
     const holdPnl = holding.reduce((s, e) => s + (e.pnl || 0), 0);
-    const totalPnl = sellPnl + holdPnl;
 
-    const withPnl = [...sells, ...holding].filter((e) => e.pnl != null && e.pnl !== 0);
-    const avgPnlPct =
-      withPnl.length > 0
-        ? withPnl.reduce((s, e) => s + (e.pnl_pct || 0), 0) / withPnl.length
-        : 0;
+    const tpTotal = sells.reduce((acc, e) => acc + ((e.pnl || 0) > 0 ? (e.pnl || 0) : 0), 0);
+    const slTotal = sells.reduce((acc, e) => acc + ((e.pnl || 0) < 0 ? (e.pnl || 0) : 0), 0);
 
-    const wins = sells.filter((e) => (e.pnl || 0) > 0);
-    const winRate = sells.length > 0 ? (wins.length / sells.length) * 100 : 0;
+    const wins = sells.filter((e) => (e.pnl || 0) > 0).length;
+    const losses = sells.filter((e) => (e.pnl || 0) < 0).length;
 
-    return {
-      tradeCount: buys.length,
-      holdingCount: holding.length,
-      sellCount: sells.length,
-      winRate,
-      totalPnl,
-      avgPnlPct,
-    };
+    return { sellPnl, holdPnl, tpTotal, slTotal, wins, losses, sellCount: sells.length, holdingCount: holding.length };
   }, [events]);
 
   const items = [
     {
-      label: '거래수',
-      value: stats.holdingCount > 0 ? `${stats.tradeCount}건 (보유${stats.holdingCount})` : `${stats.tradeCount}건`,
-      color: colors.foreground,
+      label: '실현손익',
+      value: stats.sellCount > 0 ? formatKRW(stats.sellPnl) : '-',
+      color: stats.sellPnl > 0 ? colors.profit : stats.sellPnl < 0 ? colors.loss : colors.muted,
     },
     {
-      label: '승률',
-      value: stats.sellCount > 0 ? `${stats.winRate.toFixed(1)}%` : '-',
-      color: stats.winRate >= 50 ? colors.profit : stats.winRate > 0 ? colors.loss : colors.muted,
+      label: '미실현손익',
+      value: stats.holdingCount > 0 ? formatKRW(stats.holdPnl) : '-',
+      color: stats.holdPnl > 0 ? colors.profit : stats.holdPnl < 0 ? colors.loss : colors.muted,
     },
     {
-      label: '총손익',
-      value: stats.totalPnl !== 0 ? formatKRW(stats.totalPnl) : '-',
-      color: stats.totalPnl > 0 ? colors.profit : stats.totalPnl < 0 ? colors.loss : colors.muted,
+      label: '익절 합계',
+      value: stats.tpTotal > 0 ? formatKRW(stats.tpTotal) : '-',
+      color: stats.tpTotal > 0 ? colors.profit : colors.muted,
     },
     {
-      label: '평균수익률',
-      value: stats.avgPnlPct !== 0 ? formatPct(stats.avgPnlPct) : '-',
-      color: stats.avgPnlPct > 0 ? colors.profit : stats.avgPnlPct < 0 ? colors.loss : colors.muted,
+      label: '손절 합계',
+      value: stats.slTotal < 0 ? formatKRW(stats.slTotal) : '-',
+      color: stats.slTotal < 0 ? colors.loss : colors.muted,
     },
   ];
 
@@ -274,6 +263,15 @@ function DailySummary({ events }: { events: TradeEventData[] }) {
           </View>
         ))}
       </View>
+      {/* 승/패 */}
+      {stats.sellCount > 0 && (
+        <View style={{ paddingTop: 8, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={{ color: colors.muted, fontSize: 12 }}>승/패</Text>
+          <Text style={{ color: colors.profit, fontSize: 18, fontWeight: '700', marginLeft: 8 }}>{stats.wins}</Text>
+          <Text style={{ color: colors.muted, fontSize: 18, fontWeight: '700' }}>/</Text>
+          <Text style={{ color: colors.loss, fontSize: 18, fontWeight: '700' }}>{stats.losses}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -370,6 +368,107 @@ function ExitTypeBar({ events }: { events: TradeEventData[] }) {
           </View>
         ))}
       </View>
+    </View>
+  );
+}
+
+// =============================================================================
+// ExitTypeSummary (청산유형별 금액 요약 테이블)
+// =============================================================================
+
+const EXIT_TYPE_LABELS: Record<string, string> = {
+  take_profit: '익절',
+  first_take_profit: '1차익절',
+  second_take_profit: '2차익절',
+  third_take_profit: '3차익절',
+  stop_loss: '손절',
+  trailing: '트레일링',
+  breakeven: '본전',
+  manual: '수동',
+  kis_sync: '동기화',
+};
+
+function ExitTypeSummary({ events }: { events: TradeEventData[] }) {
+  const colors = useColors();
+  const sells = events.filter((e) => e.event_type === 'SELL' && e.exit_type);
+
+  const groups = useMemo(() => {
+    const map: Record<string, { count: number; pnlSum: number; pctSum: number }> = {};
+    sells.forEach((e) => {
+      const type = e.exit_type!;
+      if (!map[type]) map[type] = { count: 0, pnlSum: 0, pctSum: 0 };
+      map[type].count++;
+      map[type].pnlSum += e.pnl || 0;
+      map[type].pctSum += e.pnl_pct || 0;
+    });
+    return Object.entries(map).map(([type, g]) => ({
+      type,
+      label: EXIT_TYPE_LABELS[type] || type,
+      count: g.count,
+      pnlSum: g.pnlSum,
+      avgPct: g.count > 0 ? g.pctSum / g.count : 0,
+    }));
+  }, [sells]);
+
+  if (groups.length === 0) return null;
+
+  return (
+    <View
+      style={{
+        backgroundColor: colors.surface,
+        borderRadius: 12,
+        marginHorizontal: 16,
+        marginTop: 12,
+        padding: 16,
+      }}
+    >
+      <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '700', marginBottom: 12 }}>
+        청산유형별 금액
+      </Text>
+      {/* 헤더 */}
+      <View style={{ flexDirection: 'row', paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <Text style={{ color: colors.muted, fontSize: 11, flex: 1 }}>유형</Text>
+        <Text style={{ color: colors.muted, fontSize: 11, width: 40, textAlign: 'right' }}>건수</Text>
+        <Text style={{ color: colors.muted, fontSize: 11, flex: 1, textAlign: 'right' }}>금액합계</Text>
+        <Text style={{ color: colors.muted, fontSize: 11, width: 60, textAlign: 'right' }}>평균수익률</Text>
+      </View>
+      {/* 데이터 행 */}
+      {groups.map((g, i) => (
+        <View
+          key={i}
+          style={{
+            flexDirection: 'row',
+            paddingVertical: 8,
+            borderBottomWidth: i < groups.length - 1 ? 1 : 0,
+            borderBottomColor: colors.border,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '500', flex: 1 }}>{g.label}</Text>
+          <Text style={{ color: colors.muted, fontSize: 13, width: 40, textAlign: 'right' }}>{g.count}건</Text>
+          <Text
+            style={{
+              color: g.pnlSum > 0 ? colors.profit : g.pnlSum < 0 ? colors.loss : colors.muted,
+              fontSize: 13,
+              fontWeight: '600',
+              flex: 1,
+              textAlign: 'right',
+            }}
+          >
+            {formatKRW(g.pnlSum)}
+          </Text>
+          <Text
+            style={{
+              color: g.avgPct > 0 ? colors.profit : g.avgPct < 0 ? colors.loss : colors.muted,
+              fontSize: 13,
+              width: 60,
+              textAlign: 'right',
+            }}
+          >
+            {formatPct(g.avgPct)}
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -836,6 +935,7 @@ export default function TradesScreen() {
       <FilterTabs current={filter} counts={counts} onChange={setFilter} />
       <DailySummary events={allEvents} />
       <ExitTypeBar events={allEvents} />
+      <ExitTypeSummary events={allEvents} />
 
       {loading ? (
         <View style={{ alignItems: 'center', paddingVertical: 40 }}>

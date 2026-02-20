@@ -265,6 +265,8 @@ const STRATEGY_LABELS: Record<string, string> = {
   sepa_trend: 'SEPA 추세',
   theme_chasing: '테마 추종',
   gap_and_go: '갭상승',
+  rsi2_reversal: 'RSI2 반전',
+  mean_reversion: '평균 회귀',
 };
 
 function StrategyCards({ stats, isDemo }: { stats: TradeStats | null; isDemo: boolean }) {
@@ -333,6 +335,14 @@ function StrategyCards({ stats, isDemo }: { stats: TradeStats | null; isDemo: bo
             <Text style={{ color: colors.muted, fontSize: 11 }}>
               {s.wins}승 {s.losses}패
             </Text>
+            {s.trades > 0 && (
+              <Text style={{
+                color: (s.total_pnl / s.trades) >= 0 ? colors.success : colors.error,
+                fontSize: 11,
+              }}>
+                건당 {formatKRW(Math.round(s.total_pnl / s.trades))}
+              </Text>
+            )}
           </View>
         </View>
       ))}
