@@ -123,6 +123,31 @@ function ReviewDateNav({ date, hasPrev, hasNext, onPrev, onNext, colors }: {
 // DailyReviewData is now { date, trade_report: any, llm_review: any }
 // We render based on the actual data structure from the server
 
+const STRATEGY_NAMES: Record<string, string> = {
+  momentum_breakout: '모멘텀',
+  theme_chasing: '테마추종',
+  gap_and_go: '갭상승',
+  mean_reversion: '평균회귀',
+  sepa_trend: 'SEPA',
+  rsi2_reversal: 'RSI2',
+  strategic_swing: '전략스윙',
+};
+
+const EXIT_TYPE_NAMES: Record<string, string> = {
+  take_profit: '익절',
+  first_take_profit: '1차익절',
+  second_take_profit: '2차익절',
+  third_take_profit: '3차익절',
+  stop_loss: '손절',
+  trailing: '트레일링',
+  trailing_stop: '트레일링',
+  breakeven: '본전',
+  manual: '수동',
+  kis_sync: '동기화',
+  profit_taking: '익절',
+  time_exit: '시간청산',
+};
+
 function ReviewContent({ review, colors }: { review: DailyReviewData; colors: ThemeColors }) {
   const [expandedTrade, setExpandedTrade] = useState<number | null>(null);
 
@@ -145,9 +170,10 @@ function ReviewContent({ review, colors }: { review: DailyReviewData; colors: Th
   }
 
   // Extract summary from trade_report
-  const totalTrades = tradeReport?.total_trades ?? tradeReport?.trades?.length ?? 0;
-  const winRate = tradeReport?.win_rate ?? 0;
-  const totalPnl = tradeReport?.total_pnl ?? 0;
+  const summary = tradeReport?.summary;
+  const totalTrades = summary?.total_trades ?? tradeReport?.trades?.length ?? 0;
+  const winRate = summary?.win_rate ?? 0;
+  const totalPnl = summary?.total_pnl ?? 0;
   const pnlColor = totalPnl >= 0 ? colors.profit : colors.loss;
 
   // Extract LLM review data
@@ -172,7 +198,7 @@ function ReviewContent({ review, colors }: { review: DailyReviewData; colors: Th
         flexDirection: 'row',
         gap: 8,
         marginHorizontal: 16,
-        marginBottom: 12,
+        marginBottom: 8,
       }}>
         <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, alignItems: 'center' }}>
           <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>거래수</Text>
@@ -181,8 +207,16 @@ function ReviewContent({ review, colors }: { review: DailyReviewData; colors: Th
           </Text>
         </View>
         <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, alignItems: 'center' }}>
-          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>승률</Text>
+          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>승/패</Text>
           <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '700' }}>
+            <Text style={{ color: colors.profit }}>{summary?.wins ?? 0}</Text>
+            {'/'}
+            <Text style={{ color: colors.loss }}>{summary?.losses ?? 0}</Text>
+          </Text>
+        </View>
+        <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, alignItems: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>승률</Text>
+          <Text style={{ color: winRate >= 50 ? colors.profit : winRate > 0 ? colors.loss : colors.foreground, fontSize: 16, fontWeight: '700' }}>
             {formatPct(winRate, false)}
           </Text>
         </View>
@@ -190,6 +224,31 @@ function ReviewContent({ review, colors }: { review: DailyReviewData; colors: Th
           <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>총손익</Text>
           <Text style={{ color: pnlColor, fontSize: 16, fontWeight: '700' }}>
             {formatKRW(totalPnl)}
+          </Text>
+        </View>
+      </View>
+      <View style={{
+        flexDirection: 'row',
+        gap: 8,
+        marginHorizontal: 16,
+        marginBottom: 12,
+      }}>
+        <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, alignItems: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>PF</Text>
+          <Text style={{ color: (summary?.profit_factor ?? 0) >= 1 ? colors.profit : colors.loss, fontSize: 16, fontWeight: '700' }}>
+            {summary?.profit_factor?.toFixed(2) ?? '--'}
+          </Text>
+        </View>
+        <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, alignItems: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>최고</Text>
+          <Text style={{ color: colors.profit, fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
+            {summary?.best_trade ? `${summary.best_trade.name} ${formatPct(summary.best_trade.pnl_pct)}` : '--'}
+          </Text>
+        </View>
+        <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, alignItems: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>최저</Text>
+          <Text style={{ color: colors.loss, fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
+            {summary?.worst_trade ? `${summary.worst_trade.name} ${formatPct(summary.worst_trade.pnl_pct)}` : '--'}
           </Text>
         </View>
         <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: 12, alignItems: 'center' }}>
@@ -239,7 +298,20 @@ function ReviewContent({ review, colors }: { review: DailyReviewData; colors: Th
                         backgroundColor: colors.elevated,
                       }}>
                         <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}>
-                          {trade.entry_strategy}
+                          {STRATEGY_NAMES[trade.entry_strategy] || trade.entry_strategy}
+                        </Text>
+                      </View>
+                    )}
+                    {trade.exit_type && (
+                      <View style={{
+                        marginLeft: 4,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 4,
+                        backgroundColor: tradePnl >= 0 ? `${colors.profit}20` : `${colors.loss}20`,
+                      }}>
+                        <Text style={{ color: tradePnl >= 0 ? colors.profit : colors.loss, fontSize: 10, fontWeight: '600' }}>
+                          {EXIT_TYPE_NAMES[trade.exit_type] || trade.exit_type}
                         </Text>
                       </View>
                     )}
@@ -728,8 +800,8 @@ export default function ReviewScreen() {
         activeTab={activeTab}
         onChange={setActiveTab}
         tabs={[
-          { key: 'review', label: '일일 리뷰' },
-          { key: 'evolution', label: '진화 이력' },
+          { key: 'review', label: '일일 복기' },
+          { key: 'evolution', label: '파라미터 변경' },
         ]}
         colors={colors}
       />

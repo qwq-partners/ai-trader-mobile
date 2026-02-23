@@ -68,7 +68,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="review"
         options={{
-          title: '리뷰',
+          title: '복기',
           tabBarIcon: ({ color }) => (
             <IconSymbol name="psychology" size={20} color={color} />
           ),
