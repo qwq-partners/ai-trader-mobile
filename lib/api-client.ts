@@ -22,6 +22,7 @@ export interface PortfolioData {
   daily_pnl: number;
   realized_daily_pnl: number;
   unrealized_pnl: number;
+  unrealized_pnl_net: number;  // 수수료 포함 미실현 순손익
   daily_pnl_pct: number;
   daily_trades: number;
   cash_ratio: number;
@@ -61,6 +62,8 @@ export interface PositionData {
   cost_basis: number;
   unrealized_pnl: number;
   unrealized_pnl_pct: number;
+  unrealized_pnl_net: number;      // 수수료 포함 순손익
+  unrealized_pnl_net_pct: number;  // 수수료 포함 순손익률
   strategy: string | null;
   entry_time: string | null;
   stop_loss: number | null;

@@ -39,6 +39,8 @@ function PortfolioHero({ portfolio, colors }: { portfolio: PortfolioData | null;
   const totalEquity = portfolio.total_equity;
   const dailyPnl = portfolio.daily_pnl;
   const dailyPnlPct = portfolio.daily_pnl_pct;
+  const realizedDaily = portfolio.realized_daily_pnl ?? 0;
+  const unrealizedNet = portfolio.unrealized_pnl_net ?? portfolio.unrealized_pnl;
   const cashBalance = portfolio.cash;
   const investedAmount = portfolio.total_position_value;
   const totalAmount = cashBalance + investedAmount;
@@ -61,6 +63,8 @@ function PortfolioHero({ portfolio, colors }: { portfolio: PortfolioData | null;
       <Text style={{ color: colors.foreground, fontSize: 28, fontWeight: 'bold' }}>
         {formatKRW(totalEquity)}
       </Text>
+
+      {/* 당일 손익 (당일 기준 실효) */}
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -77,6 +81,29 @@ function PortfolioHero({ portfolio, colors }: { portfolio: PortfolioData | null;
         <Text style={{ color: pnlColor, fontSize: 15, fontWeight: '600', marginLeft: 6 }}>
           ({formatPct(dailyPnlPct)})
         </Text>
+      </View>
+
+      {/* 실현 / 미실현(수수료후) 분해 */}
+      <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 11 }}>실현  </Text>
+          <Text style={{
+            color: realizedDaily >= 0 ? colors.profit : colors.loss,
+            fontSize: 11, fontWeight: '600',
+          }}>
+            {realizedDaily >= 0 ? '+' : ''}{formatKRW(realizedDaily)}
+          </Text>
+        </View>
+        <Text style={{ color: colors.muted, fontSize: 11 }}>·</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 11 }}>미실현(순)  </Text>
+          <Text style={{
+            color: unrealizedNet >= 0 ? colors.profit : colors.loss,
+            fontSize: 11, fontWeight: '600',
+          }}>
+            {unrealizedNet >= 0 ? '+' : ''}{formatKRW(unrealizedNet)}
+          </Text>
+        </View>
       </View>
 
       {/* 현금/투자 비율 바 */}
@@ -199,7 +226,10 @@ const STRATEGY_LABELS: Record<string, string> = {
 };
 
 function PositionCard({ position, onPress, colors }: { position: PositionData; onPress: () => void; colors: ThemeColors }) {
-  const pnlColor = position.unrealized_pnl >= 0 ? colors.profit : colors.loss;
+  // 수수료 포함 순손익 기준으로 색상 결정 (실제 손익 기준)
+  const netPnl = position.unrealized_pnl_net ?? position.unrealized_pnl;
+  const netPct = position.unrealized_pnl_net_pct ?? position.unrealized_pnl_pct;
+  const pnlColor = netPnl >= 0 ? colors.profit : colors.loss;
   const exitStage = position.exit_state?.stage || 'none';
   const exitState = EXIT_STATE_COLORS[exitStage] || EXIT_STATE_COLORS.none;
 
@@ -242,11 +272,16 @@ function PositionCard({ position, onPress, colors }: { position: PositionData; o
             </View>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
+            {/* 수수료 포함 순손익률 (메인 표시) */}
             <Text style={{ color: pnlColor, fontSize: 17, fontWeight: '800' }}>
-              {formatPct(position.unrealized_pnl_pct)}
+              {formatPct(netPct)}
             </Text>
             <Text style={{ color: pnlColor, fontSize: 12, marginTop: 2 }}>
-              {position.unrealized_pnl >= 0 ? '+' : ''}{formatKRW(position.unrealized_pnl)}
+              {netPnl >= 0 ? '+' : ''}{formatKRW(netPnl)}
+            </Text>
+            {/* 수수료 전 평가손익 (보조 표시) */}
+            <Text style={{ color: colors.muted, fontSize: 10, marginTop: 1 }}>
+              평가 {position.unrealized_pnl >= 0 ? '+' : ''}{formatKRW(position.unrealized_pnl)}
             </Text>
           </View>
         </View>
