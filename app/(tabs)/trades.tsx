@@ -9,8 +9,8 @@ import {
 } from 'react-native';
 import { useTradingData } from '@/lib/trading-data-provider';
 import { apiClient } from '@/lib/api-client';
-import type { TradeEventData } from '@/lib/api-client';
-import { DEMO_TRADE_EVENTS, formatKRW, formatPct, formatPrice } from '@/lib/demo-data';
+import type { TradeEventData, USTradeData } from '@/lib/api-client';
+import { DEMO_TRADE_EVENTS, formatKRW, formatUSD, formatPct, formatPrice } from '@/lib/demo-data';
 import { ScreenContainer } from '@/components/screen-container';
 import { useColors } from '@/hooks/use-colors';
 import { toDateString } from '@/lib/utils';
@@ -118,6 +118,59 @@ function DateNavigator({
 // FilterTabs
 // =============================================================================
 
+type MarketType = 'KR' | 'US';
+
+function MarketTabs({
+  current,
+  onChange,
+}: {
+  current: MarketType;
+  onChange: (m: MarketType) => void;
+}) {
+  const colors = useColors();
+  const tabs: { key: MarketType; label: string }[] = [
+    { key: 'KR', label: 'KR' },
+    { key: 'US', label: 'US' },
+  ];
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        marginHorizontal: 16,
+        marginTop: 12,
+        gap: 8,
+      }}
+    >
+      {tabs.map((tab) => {
+        const active = current === tab.key;
+        return (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => onChange(tab.key)}
+            style={{
+              backgroundColor: active ? colors.primary : colors.surface,
+              borderRadius: 8,
+              paddingVertical: 8,
+              paddingHorizontal: 16,
+            }}
+          >
+            <Text
+              style={{
+                color: active ? '#fff' : colors.muted,
+                fontSize: 14,
+                fontWeight: '700',
+              }}
+            >
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 type FilterType = 'all' | 'buy' | 'sell';
 
 function FilterTabs({
@@ -202,7 +255,7 @@ function FilterTabs({
 // DailySummary
 // =============================================================================
 
-function DailySummary({ events }: { events: TradeEventData[] }) {
+function DailySummary({ events, market = 'KR' }: { events: TradeEventData[]; market?: string }) {
   const colors = useColors();
 
   const stats = useMemo(() => {
@@ -222,25 +275,27 @@ function DailySummary({ events }: { events: TradeEventData[] }) {
     return { sellPnl, holdPnl, tpTotal, slTotal, wins, losses, sellCount: sells.length, holdingCount: holding.length };
   }, [events]);
 
+  const fmt = market === 'US' ? formatUSD : formatKRW;
+
   const items = [
     {
       label: '실현손익',
-      value: stats.sellCount > 0 ? formatKRW(stats.sellPnl) : '-',
+      value: stats.sellCount > 0 ? fmt(stats.sellPnl) : '-',
       color: stats.sellPnl > 0 ? colors.profit : stats.sellPnl < 0 ? colors.loss : colors.muted,
     },
     {
       label: '미실현손익',
-      value: stats.holdingCount > 0 ? formatKRW(stats.holdPnl) : '-',
+      value: stats.holdingCount > 0 ? fmt(stats.holdPnl) : '-',
       color: stats.holdPnl > 0 ? colors.profit : stats.holdPnl < 0 ? colors.loss : colors.muted,
     },
     {
       label: '익절 합계',
-      value: stats.tpTotal > 0 ? formatKRW(stats.tpTotal) : '-',
+      value: stats.tpTotal > 0 ? fmt(stats.tpTotal) : '-',
       color: stats.tpTotal > 0 ? colors.profit : colors.muted,
     },
     {
       label: '손절 합계',
-      value: stats.slTotal < 0 ? formatKRW(stats.slTotal) : '-',
+      value: stats.slTotal < 0 ? fmt(stats.slTotal) : '-',
       color: stats.slTotal < 0 ? colors.loss : colors.muted,
     },
   ];
@@ -388,7 +443,7 @@ const EXIT_TYPE_LABELS: Record<string, string> = {
   kis_sync: '동기화',
 };
 
-function ExitTypeSummary({ events }: { events: TradeEventData[] }) {
+function ExitTypeSummary({ events, market = 'KR' }: { events: TradeEventData[]; market?: string }) {
   const colors = useColors();
   const sells = events.filter((e) => e.event_type === 'SELL' && e.exit_type);
 
@@ -411,6 +466,8 @@ function ExitTypeSummary({ events }: { events: TradeEventData[] }) {
   }, [sells]);
 
   if (groups.length === 0) return null;
+
+  const fmt = market === 'US' ? formatUSD : formatKRW;
 
   return (
     <View
@@ -455,7 +512,7 @@ function ExitTypeSummary({ events }: { events: TradeEventData[] }) {
               textAlign: 'right',
             }}
           >
-            {formatKRW(g.pnlSum)}
+            {fmt(g.pnlSum)}
           </Text>
           <Text
             style={{
@@ -516,9 +573,11 @@ function formatEventTime(isoString: string): string {
 function EventCard({
   event,
   onPress,
+  market = 'KR',
 }: {
   event: TradeEventData;
   onPress: () => void;
+  market?: string;
 }) {
   const colors = useColors();
   const isBuy = event.event_type === 'BUY';
@@ -602,11 +661,11 @@ function EventCard({
         {/* Price + Qty row */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
           <Text style={{ color: colors.muted, fontSize: 13 }}>
-            {formatPrice(event.price)}원 x {event.quantity}주
+            {market === 'US' ? `$${event.price.toFixed(2)}` : `${formatPrice(event.price)}원`} x {event.quantity}주
           </Text>
           {isBuy && event.current_price && event.status === 'holding' && (
             <Text style={{ color: '#22d3ee', fontSize: 12, marginLeft: 8 }}>
-              {'\u2192'} {formatPrice(event.current_price)}원
+              {'\u2192'} {market === 'US' ? `$${event.current_price.toFixed(2)}` : `${formatPrice(event.current_price)}원`}
             </Text>
           )}
         </View>
@@ -615,7 +674,7 @@ function EventCard({
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {pnl !== 0 && (
             <Text style={{ color: pnlColor, fontSize: 14, fontWeight: '700' }}>
-              {pnl > 0 ? '+' : ''}{formatKRW(pnl)} ({formatPct(pnlPct)})
+              {pnl > 0 ? '+' : ''}{market === 'US' ? formatUSD(pnl) : formatKRW(pnl)} ({formatPct(pnlPct)})
             </Text>
           )}
           <View
@@ -653,9 +712,11 @@ function EventCard({
 function EventList({
   events,
   onPress,
+  market = 'KR',
 }: {
   events: TradeEventData[];
   onPress: (event: TradeEventData) => void;
+  market?: string;
 }) {
   const colors = useColors();
 
@@ -685,7 +746,7 @@ function EventList({
         scrollEnabled={false}
         keyExtractor={(item) => `${item.id}`}
         renderItem={({ item }) => (
-          <EventCard event={item} onPress={() => onPress(item)} />
+          <EventCard event={item} onPress={() => onPress(item)} market={market} />
         )}
       />
     </View>
@@ -853,6 +914,34 @@ function EventDetailModal({
 }
 
 // =============================================================================
+// USTradeData → TradeEventData 변환
+// =============================================================================
+
+function convertUSTradeToEvent(trade: USTradeData): TradeEventData {
+  return {
+    id: 0,
+    trade_id: trade.trade_id,
+    symbol: trade.symbol,
+    name: trade.name,
+    event_type: trade.side === 'buy' ? 'BUY' : 'SELL',
+    event_time: trade.timestamp,
+    price: trade.side === 'buy' ? trade.entry_price : trade.exit_price,
+    quantity: trade.quantity,
+    exit_type: trade.exit_type || null,
+    exit_reason: trade.reason || null,
+    pnl: trade.pnl,
+    pnl_pct: trade.pnl_pct,
+    strategy: trade.strategy,
+    signal_score: 0,
+    kis_order_no: null,
+    status: trade.status,
+    created_at: trade.timestamp,
+    entry_price: trade.entry_price,
+    current_price: trade.current_price,
+  };
+}
+
+// =============================================================================
 // TradesScreen (메인)
 // =============================================================================
 
@@ -864,6 +953,7 @@ export default function TradesScreen() {
   const [allEvents, setAllEvents] = useState<TradeEventData[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [market, setMarket] = useState<MarketType>('KR');
   const [selectedEvent, setSelectedEvent] = useState<TradeEventData | null>(null);
 
   const counts = useMemo(() => ({
@@ -872,10 +962,10 @@ export default function TradesScreen() {
     sell: allEvents.filter((e) => e.event_type === 'SELL').length,
   }), [allEvents]);
 
-  // 날짜 변경 시 거래 이벤트 로드
+  // 날짜/마켓 변경 시 거래 이벤트 로드
   useEffect(() => {
     loadEvents();
-  }, [selectedDate, state.isDemo]);
+  }, [selectedDate, state.isDemo, market]);
 
   // 필터 변경 시 재조회
   useEffect(() => {
@@ -892,13 +982,25 @@ export default function TradesScreen() {
     setLoading(true);
     try {
       const dateStr = toDateString(selectedDate);
-      const data = await apiClient.getTradeEvents(dateStr, 'all');
-      setAllEvents(data);
-      if (filter === 'all') {
-        setEvents(data);
+      if (market === 'US') {
+        const usTrades = await apiClient.getUSTrades(dateStr);
+        const converted = usTrades.map(convertUSTradeToEvent);
+        setAllEvents(converted);
+        if (filter === 'all') {
+          setEvents(converted);
+        } else {
+          const type = filter === 'buy' ? 'BUY' : 'SELL';
+          setEvents(converted.filter((e) => e.event_type === type));
+        }
       } else {
-        const filtered = await apiClient.getTradeEvents(dateStr, filter);
-        setEvents(filtered);
+        const data = await apiClient.getTradeEvents(dateStr, 'all');
+        setAllEvents(data);
+        if (filter === 'all') {
+          setEvents(data);
+        } else {
+          const filtered = await apiClient.getTradeEvents(dateStr, filter);
+          setEvents(filtered);
+        }
       }
     } catch (e) {
       console.warn('[Trades] 거래 이벤트 로드 실패:', e);
@@ -919,6 +1021,15 @@ export default function TradesScreen() {
       return;
     }
     if (allEvents.length === 0 && events.length === 0) return;
+    if (market === 'US') {
+      if (filter === 'all') {
+        setEvents(allEvents);
+      } else {
+        const type = filter === 'buy' ? 'BUY' : 'SELL';
+        setEvents(allEvents.filter((e) => e.event_type === type));
+      }
+      return;
+    }
     try {
       const dateStr = toDateString(selectedDate);
       const data = await apiClient.getTradeEvents(dateStr, filter);
@@ -931,18 +1042,19 @@ export default function TradesScreen() {
   return (
     <ScreenContainer refreshing={loading} onRefresh={loadEvents}>
       {state.isDemo && <DemoBadge />}
+      <MarketTabs current={market} onChange={setMarket} />
       <DateNavigator date={selectedDate} onChange={setSelectedDate} />
       <FilterTabs current={filter} counts={counts} onChange={setFilter} />
-      <DailySummary events={allEvents} />
+      <DailySummary events={allEvents} market={market} />
       <ExitTypeBar events={allEvents} />
-      <ExitTypeSummary events={allEvents} />
+      <ExitTypeSummary events={allEvents} market={market} />
 
       {loading ? (
         <View style={{ alignItems: 'center', paddingVertical: 40 }}>
           <ActivityIndicator color={colors.primary} size="small" />
         </View>
       ) : (
-        <EventList events={events} onPress={setSelectedEvent} />
+        <EventList events={events} onPress={setSelectedEvent} market={market} />
       )}
 
       {selectedEvent && (

@@ -3,7 +3,8 @@ import { apiClient, sseClient, type SSEMessage } from '@/lib/api-client';
 import { DEFAULT_SERVER_URL } from '@/shared/const';
 import type {
   PortfolioData, StatusData, PositionData, RiskData,
-  TradeData, EventData, PendingOrder, ExternalAccount,
+  TradeData, EventData, PendingOrder, ExternalAccount, OverseasData,
+  USPortfolioData, USPositionData,
 } from '@/lib/api-client';
 import {
   DEMO_PORTFOLIO, DEMO_STATUS, DEMO_POSITIONS, DEMO_EVENTS,
@@ -28,6 +29,9 @@ export interface TradingState {
   events: EventData[];
   pendingOrders: PendingOrder[];
   externalAccounts: ExternalAccount[];
+  overseasData: OverseasData | null;
+  usPortfolio: USPortfolioData | null;
+  usPositions: USPositionData[];
 
   // REST 데이터
   todayTrades: TradeData[];
@@ -47,6 +51,9 @@ const initialState: TradingState = {
   events: [],
   pendingOrders: [],
   externalAccounts: [],
+  overseasData: null,
+  usPortfolio: null,
+  usPositions: [],
   todayTrades: [],
 };
 
@@ -64,6 +71,9 @@ type TradingAction =
   | { type: 'UPDATE_EVENTS'; data: EventData[] }
   | { type: 'UPDATE_PENDING_ORDERS'; data: PendingOrder[] }
   | { type: 'UPDATE_EXTERNAL_ACCOUNTS'; data: ExternalAccount[] }
+  | { type: 'UPDATE_OVERSEAS'; data: OverseasData }
+  | { type: 'UPDATE_US_PORTFOLIO'; data: USPortfolioData }
+  | { type: 'UPDATE_US_POSITIONS'; data: USPositionData[] }
   | { type: 'UPDATE_TODAY_TRADES'; data: TradeData[] }
   | { type: 'SET_DEMO_MODE'; isDemo: boolean }
   | { type: 'RESET' };
@@ -112,6 +122,12 @@ function tradingReducer(state: TradingState, action: TradingAction): TradingStat
       return { ...state, pendingOrders: action.data, lastUpdated: new Date() };
     case 'UPDATE_EXTERNAL_ACCOUNTS':
       return { ...state, externalAccounts: action.data, lastUpdated: new Date() };
+    case 'UPDATE_OVERSEAS':
+      return { ...state, overseasData: action.data, lastUpdated: new Date() };
+    case 'UPDATE_US_PORTFOLIO':
+      return { ...state, usPortfolio: action.data, lastUpdated: new Date() };
+    case 'UPDATE_US_POSITIONS':
+      return { ...state, usPositions: action.data, lastUpdated: new Date() };
     case 'UPDATE_TODAY_TRADES':
       return { ...state, todayTrades: action.data };
     case 'SET_DEMO_MODE':
@@ -162,6 +178,12 @@ export function TradingDataProvider({ children }: { children: React.ReactNode })
       case 'external_accounts':
         dispatch({ type: 'UPDATE_EXTERNAL_ACCOUNTS', data: Array.isArray(msg.data) ? msg.data : [] });
         break;
+      case 'us_portfolio':
+        dispatch({ type: 'UPDATE_US_PORTFOLIO', data: msg.data });
+        break;
+      case 'us_positions':
+        dispatch({ type: 'UPDATE_US_POSITIONS', data: Array.isArray(msg.data) ? msg.data : [] });
+        break;
     }
   }, []);
 
@@ -174,18 +196,24 @@ export function TradingDataProvider({ children }: { children: React.ReactNode })
         dispatch({ type: 'SET_SERVER_URL', url });
       }
 
-      const [portfolio, status, positions, risk, todayTrades] = await Promise.all([
+      const [portfolio, status, positions, risk, todayTrades, overseasData, usPortfolio, usPositions] = await Promise.all([
         apiClient.getPortfolio(),
         apiClient.getStatus(),
         apiClient.getPositions(),
         apiClient.getRisk(),
         apiClient.getTodayTrades(),
+        apiClient.getOverseasPositions(),
+        apiClient.getUSPortfolio(),
+        apiClient.getUSPositions(),
       ]);
 
       dispatch({
         type: 'SET_CONNECTED',
         portfolio, status, positions, risk, todayTrades,
       });
+      dispatch({ type: 'UPDATE_OVERSEAS', data: overseasData });
+      dispatch({ type: 'UPDATE_US_PORTFOLIO', data: usPortfolio });
+      dispatch({ type: 'UPDATE_US_POSITIONS', data: usPositions });
 
       // Start SSE
       sseUnsubRef.current?.();
@@ -209,18 +237,24 @@ export function TradingDataProvider({ children }: { children: React.ReactNode })
   const refresh = useCallback(async () => {
     if (!state.connected) return;
     try {
-      const [portfolio, status, positions, risk, todayTrades] = await Promise.all([
+      const [portfolio, status, positions, risk, todayTrades, overseasData, usPortfolio, usPositions] = await Promise.all([
         apiClient.getPortfolio(),
         apiClient.getStatus(),
         apiClient.getPositions(),
         apiClient.getRisk(),
         apiClient.getTodayTrades(),
+        apiClient.getOverseasPositions(),
+        apiClient.getUSPortfolio(),
+        apiClient.getUSPositions(),
       ]);
       dispatch({ type: 'UPDATE_PORTFOLIO', data: portfolio });
       dispatch({ type: 'UPDATE_STATUS', data: status });
       dispatch({ type: 'UPDATE_POSITIONS', data: positions });
       dispatch({ type: 'UPDATE_RISK', data: risk });
       dispatch({ type: 'UPDATE_TODAY_TRADES', data: todayTrades });
+      dispatch({ type: 'UPDATE_OVERSEAS', data: overseasData });
+      dispatch({ type: 'UPDATE_US_PORTFOLIO', data: usPortfolio });
+      dispatch({ type: 'UPDATE_US_POSITIONS', data: usPositions });
     } catch (e) {
       console.warn('[Provider] refresh 실패:', e);
     }

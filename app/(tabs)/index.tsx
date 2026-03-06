@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, FlatList } from 'react-native';
 import { useTradingData, getDemoPortfolio, getDemoStatus, getDemoPositions, getDemoEvents, getDemoRisk, getDemoPendingOrders } from '@/lib/trading-data-provider';
 import { apiClient } from '@/lib/api-client';
-import type { ThemeData, ScreeningItem, PositionData, EventData, PendingOrder, ExternalAccount, PortfolioData, RiskData, StatusData } from '@/lib/api-client';
-import { DEMO_THEMES, DEMO_SCREENING, formatKRW, formatPct, formatPrice, formatTime } from '@/lib/demo-data';
+import type { ThemeData, ScreeningItem, PositionData, EventData, PendingOrder, ExternalAccount, OverseasData, PortfolioData, RiskData, StatusData, USPortfolioData, USPositionData } from '@/lib/api-client';
+import { DEMO_THEMES, DEMO_SCREENING, formatKRW, formatUSD, formatPct, formatPrice, formatTime } from '@/lib/demo-data';
 import { ScreenContainer } from '@/components/screen-container';
 import { useColors } from '@/hooks/use-colors';
 import { useRouter } from 'expo-router';
@@ -345,6 +345,168 @@ function PositionCards({ positions, onPress, colors }: {
           colors={colors}
         />
       ))}
+    </View>
+  );
+}
+
+const US_STRATEGY_LABELS: Record<string, string> = {
+  sepa_trend: 'SEPA',
+  momentum: '모멘텀',
+  momentum_breakout: '모멘텀',
+  theme_chasing: '테마',
+  gap_and_go: '갭상승',
+};
+
+const US_STAGE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+  none: { bg: 'rgba(148,163,184,0.15)', text: '#94a3b8', label: '대기' },
+  monitoring: { bg: 'rgba(148,163,184,0.15)', text: '#94a3b8', label: '모니터링' },
+  breakeven: { bg: 'rgba(96,165,250,0.15)', text: '#60a5fa', label: '본전이동' },
+  trailing: { bg: 'rgba(52,211,153,0.15)', text: '#34d399', label: '트레일링' },
+  first_exit: { bg: 'rgba(167,139,250,0.15)', text: '#a78bfa', label: '1차익절' },
+};
+
+function USPositionsSection({ positions, portfolio, colors }: {
+  positions: USPositionData[];
+  portfolio: USPortfolioData | null;
+  colors: ThemeColors;
+}) {
+  const totalValue = portfolio?.total_value ?? 0;
+  const cash = portfolio?.cash ?? 0;
+  const dailyPnl = portfolio?.daily_pnl ?? 0;
+  const dailyPnlPct = portfolio?.daily_pnl_pct ?? 0;
+  const pnlColor = dailyPnl >= 0 ? colors.profit : colors.loss;
+
+  return (
+    <View style={{ marginBottom: 4 }}>
+      {/* 헤더 */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10 }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.foreground }}>
+          US 봇
+        </Text>
+        {positions.length > 0 && (
+          <View style={{
+            marginLeft: 8,
+            backgroundColor: colors.elevated,
+            borderRadius: 10,
+            paddingHorizontal: 7,
+            paddingVertical: 2,
+          }}>
+            <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600' }}>
+              {positions.length}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* 자산 요약 카드 */}
+      <View style={{
+        backgroundColor: colors.surface,
+        borderRadius: 12,
+        marginHorizontal: 16,
+        marginBottom: 8,
+        padding: 14,
+      }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <View>
+            <Text style={{ color: colors.muted, fontSize: 11 }}>총자산</Text>
+            <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '700', marginTop: 2 }}>
+              {formatUSD(totalValue)}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ color: colors.muted, fontSize: 11 }}>현금</Text>
+            <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '600', marginTop: 2 }}>
+              {formatUSD(cash)}
+            </Text>
+          </View>
+        </View>
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          marginTop: 8,
+          backgroundColor: dailyPnl >= 0 ? 'rgba(52,211,153,0.12)' : 'rgba(248,113,113,0.12)',
+          borderRadius: 6,
+          paddingHorizontal: 8,
+          paddingVertical: 4,
+          alignSelf: 'flex-start',
+        }}>
+          <Text style={{ color: pnlColor, fontSize: 13, fontWeight: '700' }}>
+            당일손익 {dailyPnl >= 0 ? '+' : ''}{formatUSD(dailyPnl)}
+          </Text>
+          <Text style={{ color: pnlColor, fontSize: 12, fontWeight: '600', marginLeft: 4 }}>
+            ({formatPct(dailyPnlPct)})
+          </Text>
+        </View>
+      </View>
+
+      {/* 포지션 카드들 */}
+      {positions.map((pos) => {
+        const posPnlColor = pos.pnl >= 0 ? colors.profit : colors.loss;
+        const stageInfo = US_STAGE_COLORS[pos.stage] || US_STAGE_COLORS.none;
+        return (
+          <View
+            key={pos.symbol}
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: 12,
+              marginHorizontal: 16,
+              marginBottom: 8,
+              flexDirection: 'row',
+              overflow: 'hidden',
+            }}
+          >
+            <View style={{ width: 5, backgroundColor: posPnlColor }} />
+            <View style={{ flex: 1, padding: 16 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 }}>
+                  <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700' }}>
+                    {pos.name}
+                  </Text>
+                  {pos.strategy && (
+                    <View style={{
+                      marginLeft: 8,
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 4,
+                      backgroundColor: colors.elevated,
+                    }}>
+                      <Text style={{ color: colors.muted, fontSize: 10, fontWeight: '600' }}>
+                        {US_STRATEGY_LABELS[pos.strategy] || pos.strategy}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ color: posPnlColor, fontSize: 17, fontWeight: '800' }}>
+                    {formatPct(pos.pnl_pct)}
+                  </Text>
+                  <Text style={{ color: posPnlColor, fontSize: 12, marginTop: 2 }}>
+                    {pos.pnl >= 0 ? '+' : ''}{formatUSD(pos.pnl)}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 12 }}>
+                <Text style={{ color: colors.muted, fontSize: 11 }}>
+                  ${pos.avg_price.toFixed(2)} → ${pos.current_price.toFixed(2)}
+                </Text>
+                <Text style={{ color: colors.muted, fontSize: 11 }}>
+                  {pos.quantity}주
+                </Text>
+                <View style={{
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  borderRadius: 4,
+                  backgroundColor: stageInfo.bg,
+                }}>
+                  <Text style={{ color: stageInfo.text, fontSize: 10, fontWeight: '600' }}>
+                    {stageInfo.label}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -719,6 +881,9 @@ export default function RealtimeScreen() {
   const events = state.isDemo ? getDemoEvents() : state.events;
   const pendingOrders = state.isDemo ? getDemoPendingOrders() : state.pendingOrders;
   const externalAccounts: ExternalAccount[] = state.isDemo ? [] : state.externalAccounts;
+  const overseasData = state.isDemo ? null : state.overseasData;
+  const usPositions = state.isDemo ? [] : state.usPositions;
+  const usPortfolio = state.isDemo ? null : state.usPortfolio;
   const displayThemes = state.isDemo ? DEMO_THEMES : themes;
   const displayScreening = state.isDemo ? DEMO_SCREENING : screening;
 
@@ -741,6 +906,8 @@ export default function RealtimeScreen() {
         onPress={(p) => router.push(`/position-detail?symbol=${p.symbol}&name=${encodeURIComponent(p.name)}`)}
         colors={colors}
       />
+      {(usPositions.length > 0 || (usPortfolio?.positions_count ?? 0) > 0) &&
+        <USPositionsSection positions={usPositions} portfolio={usPortfolio} colors={colors} />}
       {externalAccounts.length > 0 && <ExternalAccountsSection accounts={externalAccounts} colors={colors} />}
       {pendingOrders.length > 0 && <PendingOrdersSection orders={pendingOrders} colors={colors} />}
       <ThemeChips themes={displayThemes} colors={colors} />

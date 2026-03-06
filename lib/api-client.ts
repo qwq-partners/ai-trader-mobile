@@ -293,6 +293,50 @@ export interface ExternalAccount {
   }>;
 }
 
+export interface USPortfolioData {
+  cash: number;
+  total_value: number;
+  positions_value: number;
+  daily_pnl: number;
+  daily_pnl_pct: number;
+  positions_count: number;
+}
+
+export interface USPositionData {
+  symbol: string; name: string; quantity: number; avg_price: number;
+  current_price: number; pnl: number; pnl_pct: number;
+  strategy: string; stage: string; market_value: number; entry_time: string | null;
+}
+
+export interface USTradeData {
+  timestamp: string; symbol: string; name: string;
+  side: 'buy' | 'sell'; entry_price: number; exit_price: number;
+  quantity: number; pnl: number; pnl_pct: number; strategy: string;
+  reason: string; exit_type: string; trade_id: string;
+  market: string; status: string; current_price?: number;
+}
+
+export interface OverseasData {
+  positions: Array<{
+    symbol: string;
+    name: string;
+    qty: number;
+    avg_price: number;
+    current_price: number;
+    eval_amt: number;
+    pnl: number;
+    pnl_pct: number;
+  }>;
+  summary: {
+    total_equity: number;
+    stock_value: number;
+    deposit: number;
+    unrealized_pnl: number;
+    purchase_amount: number;
+  };
+  cached: boolean;
+}
+
 export interface TradeEventData {
   id: number;
   trade_id: string;
@@ -498,6 +542,35 @@ class ApiClient {
     try { return await this.get('/api/accounts/positions'); } catch (e) { console.warn('[API] getExternalAccounts 실패:', e); return []; }
   }
 
+  // --- 해외주식 ---
+
+  async getOverseasPositions(): Promise<OverseasData> {
+    try { return await this.get('/api/accounts/overseas'); }
+    catch (e) {
+      console.warn('[API] getOverseasPositions 실패:', e);
+      return { positions: [], summary: { total_equity: 0, stock_value: 0, deposit: 0, unrealized_pnl: 0, purchase_amount: 0 }, cached: false };
+    }
+  }
+
+  // --- US 봇 ---
+
+  async getUSPortfolio(): Promise<USPortfolioData> {
+    try {
+      return await this.get('/api/us/portfolio');
+    } catch (e) {
+      console.warn('[API] getUSPortfolio 실패:', e);
+      return { cash: 0, total_value: 0, positions_value: 0, daily_pnl: 0, daily_pnl_pct: 0, positions_count: 0 };
+    }
+  }
+
+  async getUSPositions(): Promise<USPositionData[]> {
+    try { return await this.get('/api/us/positions'); } catch (e) { console.warn('[API] getUSPositions 실패:', e); return []; }
+  }
+
+  async getUSTrades(date: string): Promise<USTradeData[]> {
+    try { return await this.get('/api/us/trades', { date }); } catch (e) { console.warn('[API] getUSTrades 실패:', e); return []; }
+  }
+
   // --- 이벤트 ---
 
   async getEvents(sinceId?: number): Promise<EventData[]> {
@@ -531,7 +604,9 @@ export type SSEEventType =
   | 'risk'
   | 'events'
   | 'pending_orders'
-  | 'external_accounts';
+  | 'external_accounts'
+  | 'us_portfolio'
+  | 'us_positions';
 
 export interface SSEMessage {
   type: SSEEventType;
@@ -633,13 +708,19 @@ class SSEClient {
         if (events.status === 'fulfilled') this.emit({ type: 'events', data: events.value });
         if (pendingOrders.status === 'fulfilled') this.emit({ type: 'pending_orders', data: pendingOrders.value });
 
-        // 외부 계좌는 10회(30초)마다 갱신
+        // 외부 계좌 + US 봇은 10회(30초)마다 갱신
         if (this.pollCount % 10 === 0) {
           try {
-            const accounts = await apiClient.getExternalAccounts();
+            const [accounts, usPortfolio, usPositions] = await Promise.all([
+              apiClient.getExternalAccounts(),
+              apiClient.getUSPortfolio(),
+              apiClient.getUSPositions(),
+            ]);
             this.emit({ type: 'external_accounts', data: accounts });
+            this.emit({ type: 'us_portfolio', data: usPortfolio });
+            this.emit({ type: 'us_positions', data: usPositions });
           } catch (e) {
-            console.warn('[SSE] 외부 계좌 폴링 실패:', e);
+            console.warn('[SSE] 외부 계좌/US 폴링 실패:', e);
           }
         }
       } catch (e) {
