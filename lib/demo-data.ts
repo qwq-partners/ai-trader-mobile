@@ -348,6 +348,13 @@ export function formatKRW(amount: number): string {
   return `${amount.toLocaleString()}원`;
 }
 
+export function formatUSD(amount: number): string {
+  return '$' + Math.abs(amount).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export function formatPrice(price: number): string {
   return price.toLocaleString();
 }
