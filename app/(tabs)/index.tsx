@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, FlatList } from 'react-native';
 import { useTradingData, getDemoPortfolio, getDemoStatus, getDemoPositions, getDemoEvents, getDemoRisk, getDemoPendingOrders } from '@/lib/trading-data-provider';
-import { apiClient } from '@/lib/api-client';
-import type { ThemeData, ScreeningItem, PositionData, EventData, PendingOrder, ExternalAccount, OverseasData, PortfolioData, RiskData, StatusData, USPortfolioData, USPositionData } from '@/lib/api-client';
+import { apiClient, sseClient } from '@/lib/api-client';
+import type { ThemeData, ScreeningItem, PositionData, EventData, PendingOrder, ExternalAccount, OverseasData, PortfolioData, RiskData, StatusData, USPortfolioData, USPositionData, CoreHoldingsData, MarketIndexItem } from '@/lib/api-client';
 import { DEMO_THEMES, DEMO_SCREENING, formatKRW, formatUSD, formatPct, formatPrice, formatTime } from '@/lib/demo-data';
 import { ScreenContainer } from '@/components/screen-container';
 import { useColors } from '@/hooks/use-colors';
@@ -768,6 +768,99 @@ function ScreeningTop({ items, colors }: { items: ScreeningItem[]; colors: Theme
   );
 }
 
+function MarketIndicesBar({ indices, colors }: { indices: MarketIndexItem[]; colors: ThemeColors }) {
+  if (!indices || indices.length === 0) return null;
+  const filtered = indices.filter(i => i.kind === "index_kr" || i.kind === "index_us");
+  if (filtered.length === 0) return null;
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ backgroundColor: colors.surface, borderBottomWidth: 0.5, borderBottomColor: colors.border }}
+      contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 16, flexDirection: "row", alignItems: "center" }}
+    >
+      {filtered.map((item) => {
+        const isUp = item.change_pct >= 0;
+        const color = isUp ? colors.profit : colors.loss;
+        return (
+          <View key={item.symbol} style={{ alignItems: "center", minWidth: 70 }}>
+            <Text style={{ color: colors.muted, fontSize: 10, fontWeight: "600" }}>{item.label}</Text>
+            <Text style={{ color: colors.foreground, fontSize: 12, fontWeight: "700", marginTop: 1 }}>
+              {item.kind === "index_us"
+                ? item.price.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                : item.price.toLocaleString("ko-KR")}
+            </Text>
+            <Text style={{ color, fontSize: 10, fontWeight: "600" }}>
+              {isUp ? "+" : ""}{item.change_pct.toFixed(2)}%
+            </Text>
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function CoreHoldingsSection({ data, colors }: { data: CoreHoldingsData | null; colors: ThemeColors }) {
+  if (!data || data.positions.length === 0) return null;
+  const summary = data.summary;
+  const totalPnlColor = summary.total_pnl_pct >= 0 ? colors.profit : colors.loss;
+
+  return (
+    <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
+      {/* Header */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "700" }}>코어 홀딩</Text>
+          <View style={{ backgroundColor: "rgba(251,191,36,0.15)", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 1, borderColor: "rgba(251,191,36,0.4)" }}>
+            <Text style={{ color: "#fbbf24", fontSize: 10, fontWeight: "700" }}>CORE</Text>
+          </View>
+        </View>
+        <View style={{ alignItems: "flex-end" }}>
+          <Text style={{ color: totalPnlColor, fontSize: 13, fontWeight: "700" }}>
+            {summary.total_pnl_pct >= 0 ? "+" : ""}{summary.total_pnl_pct.toFixed(2)}%
+          </Text>
+          <Text style={{ color: colors.muted, fontSize: 10 }}>
+            {data.positions.length}/{summary.max_positions}슬롯
+            {data.days_to_rebalance > 0 ? ` · 리밸 D-${data.days_to_rebalance}` : ""}
+          </Text>
+        </View>
+      </View>
+      {/* Positions */}
+      {data.positions.map((pos) => {
+        const isUp = pos.unrealized_pnl_pct >= 0;
+        const pnlColor = isUp ? colors.profit : colors.loss;
+        return (
+          <View key={pos.symbol} style={{
+            backgroundColor: colors.surface,
+            borderRadius: 10,
+            padding: 12,
+            marginBottom: 6,
+            borderLeftWidth: 3,
+            borderLeftColor: "#fbbf24",
+          }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "700" }}>{pos.name}</Text>
+                <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+                  {pos.symbol} · {pos.holding_days}일 보유 · {pos.weight_pct.toFixed(1)}%
+                </Text>
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={{ color: pnlColor, fontSize: 14, fontWeight: "700" }}>
+                  {isUp ? "+" : ""}{pos.unrealized_pnl_pct.toFixed(2)}%
+                </Text>
+                <Text style={{ color: colors.muted, fontSize: 11 }}>
+                  {pos.current_price.toLocaleString("ko-KR")}원
+                </Text>
+              </View>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 const EVENT_ICONS: Record<string, { icon: string; color: string }> = {
   fill: { icon: '\u25CF', color: '#34d399' },
   signal: { icon: '\u25B2', color: '#60a5fa' },
@@ -856,6 +949,8 @@ export default function RealtimeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [themes, setThemes] = useState<ThemeData[]>([]);
   const [screening, setScreening] = useState<ScreeningItem[]>([]);
+  const [coreHoldings, setCoreHoldings] = useState<CoreHoldingsData | null>(null);
+  const [marketIndices, setMarketIndices] = useState<MarketIndexItem[]>([]);
 
   // Pull-to-refresh
   const handleRefresh = async () => {
@@ -896,8 +991,32 @@ export default function RealtimeScreen() {
     }
   }, [state.isDemo]);
 
+  // 코어홀딩 / 지수 초기 로드 + SSE
+  useEffect(() => {
+    if (state.isDemo) return;
+
+    // 초기 데이터 로드
+    const loadInitialData = async () => {
+      const [coreHoldingsData, marketIndicesData] = await Promise.allSettled([
+        apiClient.getCoreHoldings(),
+        apiClient.getMarketIndices(),
+      ]);
+      if (coreHoldingsData.status === "fulfilled") setCoreHoldings(coreHoldingsData.value);
+      if (marketIndicesData.status === "fulfilled") setMarketIndices(marketIndicesData.value);
+    };
+    loadInitialData();
+
+    // SSE 리스너
+    const unsub = sseClient.addListener((msg) => {
+      if (msg.type === "core_holdings") setCoreHoldings(msg.data);
+      if (msg.type === "market_indices") setMarketIndices(msg.data);
+    });
+    return unsub;
+  }, [state.isDemo]);
+
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
+      <MarketIndicesBar indices={marketIndices} colors={colors} />
       {state.isDemo && <DemoBadge colors={colors} />}
       <PortfolioHero portfolio={portfolio} colors={colors} />
       <RiskGauge risk={risk} status={status} colors={colors} />
@@ -906,6 +1025,7 @@ export default function RealtimeScreen() {
         onPress={(p) => router.push(`/position-detail?symbol=${p.symbol}&name=${encodeURIComponent(p.name)}`)}
         colors={colors}
       />
+      <CoreHoldingsSection data={coreHoldings} colors={colors} />
       {(usPositions.length > 0 || (usPortfolio?.positions_count ?? 0) > 0) &&
         <USPositionsSection positions={usPositions} portfolio={usPortfolio} colors={colors} />}
       {externalAccounts.length > 0 && <ExternalAccountsSection accounts={externalAccounts} colors={colors} />}

@@ -337,6 +337,46 @@ export interface OverseasData {
   cached: boolean;
 }
 
+export interface CoreHoldingPosition {
+  symbol: string;
+  name: string;
+  quantity: number;
+  avg_price: number;
+  current_price: number;
+  market_value: number;
+  cost_basis: number;
+  unrealized_pnl: number;
+  unrealized_pnl_pct: number;
+  holding_days: number;
+  weight_pct: number;
+}
+
+export interface CoreHoldingsData {
+  positions: CoreHoldingPosition[];
+  summary: {
+    total_value: number;
+    total_cost: number;
+    total_pnl_pct: number;
+    max_positions: number;
+    budget: number;
+    alloc_pct: number;
+    slot_count: number;
+  };
+  days_to_rebalance: number;
+  next_rebalance: string | null;
+}
+
+export interface MarketIndexItem {
+  symbol: string;
+  label: string;
+  kind: string;  // "index_kr" | "index_us" | "stock_kr"
+  price: number;
+  change: number;
+  change_pct: number;
+  prev_close: number | null;
+  sparkline?: number[];
+}
+
 export interface TradeEventData {
   id: number;
   trade_id: string;
@@ -552,6 +592,18 @@ class ApiClient {
     }
   }
 
+  // --- 코어홀딩 / 지수 ---
+
+  async getCoreHoldings(): Promise<CoreHoldingsData> {
+    try { return await this.get("/api/core-holdings"); }
+    catch (e) { console.warn("[API] getCoreHoldings 실패:", e); return { positions: [], summary: { total_value: 0, total_cost: 0, total_pnl_pct: 0, max_positions: 3, budget: 0, alloc_pct: 30, slot_count: 0 }, days_to_rebalance: 0, next_rebalance: null }; }
+  }
+
+  async getMarketIndices(): Promise<MarketIndexItem[]> {
+    try { return await this.get("/api/market/indices"); }
+    catch (e) { console.warn("[API] getMarketIndices 실패:", e); return []; }
+  }
+
   // --- US 봇 ---
 
   async getUSPortfolio(): Promise<USPortfolioData> {
@@ -606,7 +658,11 @@ export type SSEEventType =
   | 'pending_orders'
   | 'external_accounts'
   | 'us_portfolio'
-  | 'us_positions';
+  | 'us_positions'
+  | 'core_holdings'
+  | 'market_indices'
+  | 'us_status'
+  | 'us_risk';
 
 export interface SSEMessage {
   type: SSEEventType;
@@ -655,6 +711,10 @@ class SSEClient {
         'events',
         'pending_orders',
         'external_accounts',
+        'core_holdings',
+        'market_indices',
+        'us_status',
+        'us_risk',
       ];
 
       eventTypes.forEach(type => {
@@ -708,19 +768,31 @@ class SSEClient {
         if (events.status === 'fulfilled') this.emit({ type: 'events', data: events.value });
         if (pendingOrders.status === 'fulfilled') this.emit({ type: 'pending_orders', data: pendingOrders.value });
 
-        // 외부 계좌 + US 봇은 10회(30초)마다 갱신
+        // 지수는 5회(15초)마다 갱신
+        if (this.pollCount % 5 === 0) {
+          try {
+            const indices = await apiClient.getMarketIndices();
+            this.emit({ type: 'market_indices', data: indices });
+          } catch (e) {
+            console.warn('[SSE] 지수 폴링 실패:', e);
+          }
+        }
+
+        // 외부 계좌 + US 봇 + 코어홀딩은 10회(30초)마다 갱신
         if (this.pollCount % 10 === 0) {
           try {
-            const [accounts, usPortfolio, usPositions] = await Promise.all([
+            const [accounts, usPortfolio, usPositions, coreHoldings] = await Promise.all([
               apiClient.getExternalAccounts(),
               apiClient.getUSPortfolio(),
               apiClient.getUSPositions(),
+              apiClient.getCoreHoldings(),
             ]);
             this.emit({ type: 'external_accounts', data: accounts });
             this.emit({ type: 'us_portfolio', data: usPortfolio });
             this.emit({ type: 'us_positions', data: usPositions });
+            this.emit({ type: 'core_holdings', data: coreHoldings });
           } catch (e) {
-            console.warn('[SSE] 외부 계좌/US 폴링 실패:', e);
+            console.warn('[SSE] 외부 계좌/US/코어홀딩 폴링 실패:', e);
           }
         }
       } catch (e) {
