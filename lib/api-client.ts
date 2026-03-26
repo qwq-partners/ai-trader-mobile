@@ -422,6 +422,109 @@ export interface PositionSnapshot {
   weight: number;
 }
 
+// ── 정산 ──────────────────────────────────────────────────────────────────
+
+export interface SettlementBuyItem {
+  time: string;
+  symbol: string;
+  name: string;
+  quantity: number;
+  price: number;
+  amount: number;
+  fee: number;
+  total: number;
+  odno: string;
+}
+
+export interface SettlementSellItem {
+  time: string;
+  symbol: string;
+  name: string;
+  quantity: number;
+  price: number;
+  entry_price: number;
+  amount: number;
+  fee: number;
+  tax: number;
+  net_amount: number;
+  pnl: number;
+  pnl_pct: number;
+  exit_type: string;
+  odno: string;
+}
+
+export interface SettlementHoldingItem {
+  symbol: string;
+  name: string;
+  quantity: number;
+  avg_price: number;
+  current_price: number;
+  unrealized_pnl: number;
+  unrealized_pct: number;
+}
+
+export interface SettlementSummary {
+  total_buy_amount: number;
+  total_sell_amount: number;
+  realized_pnl: number;
+  unrealized_pnl: number;
+  total_pnl: number;
+  buy_count: number;
+  sell_count: number;
+  win_count: number;
+  loss_count: number;
+  holdings_count: number;
+}
+
+export interface DailySettlementData {
+  date: string;
+  buys: SettlementBuyItem[];
+  sells: SettlementSellItem[];
+  holdings: SettlementHoldingItem[];
+  summary: SettlementSummary;
+  error?: string;
+}
+
+// ── 테마 (상세) ────────────────────────────────────────────────────────────
+
+export interface ThemeNewsItem {
+  title: string;
+  url: string;
+}
+
+export interface ThemeDetailData {
+  name: string;
+  keywords: string[];
+  related_stocks: string[];
+  score: number;
+  news_count: number;
+  news_items?: ThemeNewsItem[];
+  news_titles?: string[];
+  detected_at: string;
+  last_updated: string;
+}
+
+export interface USThemeData {
+  name: string;
+  score: number;
+  keywords: string[];
+  tickers: string[];
+  news_count: number;
+  detected_at: string;
+  news_titles?: string[];
+}
+
+export interface USScreeningItem {
+  symbol: string;
+  name: string;
+  price: number;
+  change_pct: number;
+  volume_ratio?: number;
+  score: number;
+  reasons: string[];
+  screened_at: string;
+}
+
 // =============================================================================
 // API Client
 // =============================================================================
@@ -621,6 +724,29 @@ class ApiClient {
 
   async getUSTrades(date: string): Promise<USTradeData[]> {
     try { return await this.get('/api/us/trades', { date }); } catch (e) { console.warn('[API] getUSTrades 실패:', e); return []; }
+  }
+
+  // --- 정산 ---
+
+  async getDailySettlement(date?: string): Promise<DailySettlementData> {
+    const params = date ? { date } : undefined;
+    try { return await this.get("/api/daily-settlement", params); }
+    catch (e) {
+      console.warn("[API] getDailySettlement 실패:", e);
+      return { date: date || "", buys: [], sells: [], holdings: [], summary: { total_buy_amount: 0, total_sell_amount: 0, realized_pnl: 0, unrealized_pnl: 0, total_pnl: 0, buy_count: 0, sell_count: 0, win_count: 0, loss_count: 0, holdings_count: 0 } };
+    }
+  }
+
+  // --- US 테마/스크리닝 ---
+
+  async getUSThemes(): Promise<USThemeData[]> {
+    try { return await this.get("/api/us/themes"); }
+    catch (e) { console.warn("[API] getUSThemes 실패:", e); return []; }
+  }
+
+  async getUSScreening(): Promise<USScreeningItem[]> {
+    try { return await this.get("/api/us/screening"); }
+    catch (e) { console.warn("[API] getUSScreening 실패:", e); return []; }
   }
 
   // --- 이벤트 ---

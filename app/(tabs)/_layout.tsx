@@ -57,6 +57,24 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="settlement"
+        options={{
+          title: '정산',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol name="account-balance" size={20} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="themes"
+        options={{
+          title: '테마',
+          tabBarIcon: ({ color }) => (
+            <IconSymbol name="auto-awesome" size={20} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="performance"
         options={{
           title: '성과',
