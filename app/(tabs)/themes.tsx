@@ -74,8 +74,8 @@ function getScoreColor(score: number, colors: ThemeColors): string {
 
 function KRThemeCard({ theme, colors }: { theme: ThemeDetailData; colors: ThemeColors }) {
   const scoreColor = getScoreColor(theme.score, colors);
-  const keywords = theme.keywords.slice(0, 5);
-  const stocks = theme.related_stocks.slice(0, 6);
+  const keywords = (theme.keywords || []).slice(0, 5);
+  const stocks = (theme.related_stocks || []).slice(0, 6);
   const newsTitles = (theme.news_titles || []).slice(0, 3);
 
   return (
@@ -155,8 +155,8 @@ function KRThemeCard({ theme, colors }: { theme: ThemeDetailData; colors: ThemeC
 
 function USThemeCard({ theme, colors }: { theme: USThemeData; colors: ThemeColors }) {
   const scoreColor = getScoreColor(theme.score, colors);
-  const keywords = theme.keywords.slice(0, 5);
-  const tickers = theme.tickers.slice(0, 6);
+  const keywords = (theme.keywords || []).slice(0, 5);
+  const tickers = (theme.stocks || []).slice(0, 6);
   const newsTitles = (theme.news_titles || []).slice(0, 3);
 
   return (

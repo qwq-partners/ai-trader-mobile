@@ -508,10 +508,12 @@ export interface USThemeData {
   name: string;
   score: number;
   keywords: string[];
-  tickers: string[];
+  stocks: string[];       // API 필드명: stocks (tickers 아님)
   news_count: number;
   detected_at: string;
+  last_updated: string;
   news_titles?: string[];
+  news_items?: { title: string; url: string }[];
 }
 
 export interface USScreeningItem {
