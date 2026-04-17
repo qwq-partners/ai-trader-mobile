@@ -354,6 +354,97 @@ function StrategyCards({ stats, isDemo }: { stats: TradeStats | null; isDemo: bo
 // AnalysisView (성과 분석)
 // =============================================================================
 
+function BenchmarkCard({ period, isDemo, colors }: { period: number; isDemo: boolean; colors: typeof import('@/constants/theme').Colors.dark }) {
+  const [benchmark, setBenchmark] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isDemo) {
+      setBenchmark({
+        portfolio_return_pct: 2.35,
+        benchmark_return_pct: 1.12,
+        alpha: 1.23,
+        benchmark_name: 'KOSPI',
+      });
+      return;
+    }
+    setLoading(true);
+    apiClient.getBenchmark(period)
+      .then((data) => setBenchmark(data))
+      .catch((e) => console.warn('[Performance] 벤치마크 로드 실패:', e))
+      .finally(() => setLoading(false));
+  }, [period, isDemo]);
+
+  if (loading) {
+    return (
+      <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+        <ActivityIndicator color={colors.primary} size="small" />
+      </View>
+    );
+  }
+
+  if (!benchmark) return null;
+
+  const portfolioReturn = benchmark.portfolio_return_pct ?? 0;
+  const benchmarkReturn = benchmark.benchmark_return_pct ?? 0;
+  const alpha = benchmark.alpha ?? (portfolioReturn - benchmarkReturn);
+  const benchmarkName = benchmark.benchmark_name ?? 'KOSPI';
+  const alphaColor = alpha >= 0 ? colors.success : colors.error;
+
+  return (
+    <View style={{
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginHorizontal: 16,
+      marginBottom: 12,
+    }}>
+      <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: '700', marginBottom: 12 }}>
+        벤치마크 비교
+      </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {/* 포트폴리오 수익률 */}
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>포트폴리오</Text>
+          <Text style={{
+            color: portfolioReturn >= 0 ? colors.success : colors.error,
+            fontSize: 18,
+            fontWeight: '700',
+          }}>
+            {portfolioReturn >= 0 ? '+' : ''}{portfolioReturn.toFixed(2)}%
+          </Text>
+        </View>
+        {/* vs */}
+        <View style={{ justifyContent: 'center', paddingHorizontal: 8 }}>
+          <Text style={{ color: colors.muted, fontSize: 12 }}>vs</Text>
+        </View>
+        {/* 벤치마크 수익률 */}
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>{benchmarkName}</Text>
+          <Text style={{
+            color: benchmarkReturn >= 0 ? colors.success : colors.error,
+            fontSize: 18,
+            fontWeight: '700',
+          }}>
+            {benchmarkReturn >= 0 ? '+' : ''}{benchmarkReturn.toFixed(2)}%
+          </Text>
+        </View>
+        {/* 알파 */}
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>Alpha</Text>
+          <Text style={{
+            color: alphaColor,
+            fontSize: 18,
+            fontWeight: '800',
+          }}>
+            {alpha >= 0 ? '+' : ''}{alpha.toFixed(2)}%
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function AnalysisView() {
   const { state } = useTradingData();
   const colors = useColors();
@@ -398,6 +489,8 @@ function AnalysisView() {
       )}
 
       <StatsSummary stats={stats} />
+
+      <BenchmarkCard period={period} isDemo={state.isDemo} colors={colors} />
 
       <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
         <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: '700', marginBottom: 8 }}>

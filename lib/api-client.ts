@@ -757,6 +757,33 @@ class ApiClient {
     try { return await this.get('/api/events', sinceId ? { since: sinceId } : undefined); } catch (e) { console.warn('[API] getEvents 실패:', e); return []; }
   }
 
+  async getSignalEvents(limit: number = 50): Promise<any[]> {
+    try { return await this.get('/api/signal-events', { limit }); }
+    catch (e) { console.warn('[API] getSignalEvents 실패:', e); return []; }
+  }
+
+  // --- 벤치마크 ---
+
+  async getBenchmark(days: number = 30): Promise<any> {
+    try { return await this.get('/api/benchmark', { days }); }
+    catch (e) { console.warn('[API] getBenchmark 실패:', e); return null; }
+  }
+
+  // --- 엔진 상세 ---
+
+  async getLLMRegime(): Promise<any> {
+    try { return await this.get('/api/engine/llm-regime'); }
+    catch (e) { console.warn('[API] getLLMRegime 실패:', e); return null; }
+  }
+
+  async executeSignals(): Promise<any> {
+    return this.post('/api/signals/execute');
+  }
+
+  async runScan(): Promise<any> {
+    return this.post('/api/scan/run');
+  }
+
   // --- 연결 테스트 ---
 
   async testConnection(): Promise<{ connected: boolean; latencyMs: number }> {

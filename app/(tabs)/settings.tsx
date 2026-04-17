@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Switch, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Switch, ActivityIndicator, Alert } from 'react-native';
 import { useTradingData } from '@/lib/trading-data-provider';
 import { apiClient } from '@/lib/api-client';
 import type { ConfigData } from '@/lib/api-client';
@@ -383,6 +383,212 @@ function DemoModeSection({
   );
 }
 
+// --- 엔진 상태 상세 ---
+
+function EngineStatusSection({ isDemo, colors }: { isDemo: boolean; colors: ThemeColors }) {
+  const [regime, setRegime] = useState<any>(null);
+  const [loadingRegime, setLoadingRegime] = useState(false);
+  const [executingSignals, setExecutingSignals] = useState(false);
+  const [runningScan, setRunningScan] = useState(false);
+
+  useEffect(() => {
+    if (!isDemo) {
+      setLoadingRegime(true);
+      apiClient.getLLMRegime()
+        .then((data) => setRegime(data))
+        .catch((e) => console.warn('[Settings] LLM regime 로드 실패:', e))
+        .finally(() => setLoadingRegime(false));
+    }
+  }, [isDemo]);
+
+  if (isDemo) return null;
+
+  const regimeLabel = regime?.regime || regime?.market_regime || '-';
+  const regimeColorMap: Record<string, string> = {
+    bull: colors.success,
+    bear: colors.error,
+    sideways: colors.warning,
+  };
+  const regimeColor = regimeColorMap[regimeLabel] || colors.muted;
+
+  const crossValidation = regime?.cross_validation;
+  const passCount = crossValidation?.passed ?? crossValidation?.pass_count ?? '-';
+  const blockCount = crossValidation?.blocked ?? crossValidation?.block_count ?? '-';
+
+  const handleExecuteSignals = async () => {
+    Alert.alert(
+      '신호 실행',
+      '대기 중인 신호를 즉시 실행하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '실행',
+          onPress: async () => {
+            setExecutingSignals(true);
+            try {
+              const result = await apiClient.executeSignals();
+              Alert.alert('완료', result?.message || '신호 실행이 완료되었습니다.');
+            } catch (e: any) {
+              Alert.alert('오류', e?.message || '신호 실행에 실패했습니다.');
+            }
+            setExecutingSignals(false);
+          },
+        },
+      ],
+    );
+  };
+
+  const handleRunScan = async () => {
+    Alert.alert(
+      '스캔 실행',
+      '종목 스캔을 즉시 실행하시겠습니까?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '실행',
+          onPress: async () => {
+            setRunningScan(true);
+            try {
+              const result = await apiClient.runScan();
+              Alert.alert('완료', result?.message || '스캔이 완료되었습니다.');
+            } catch (e: any) {
+              Alert.alert('오류', e?.message || '스캔 실행에 실패했습니다.');
+            }
+            setRunningScan(false);
+          },
+        },
+      ],
+    );
+  };
+
+  return (
+    <View>
+      <SectionHeader title="엔진 상태" colors={colors} />
+      <View style={{
+        backgroundColor: colors.surface,
+        borderRadius: 12,
+        padding: 16,
+        marginHorizontal: 16,
+        marginBottom: 12,
+      }}>
+        {loadingRegime ? (
+          <ActivityIndicator color={colors.primary} size="small" style={{ paddingVertical: 8 }} />
+        ) : (
+          <>
+            {/* 시장 체제 */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>시장 체제</Text>
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: regimeColor + '22',
+                borderRadius: 6,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+              }}>
+                <View style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: regimeColor,
+                  marginRight: 6,
+                }} />
+                <Text style={{ color: regimeColor, fontSize: 13, fontWeight: '700', textTransform: 'uppercase' }}>
+                  {regimeLabel}
+                </Text>
+              </View>
+            </View>
+
+            {/* 크로스 검증 */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>크로스 검증</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ color: colors.success, fontSize: 13, fontWeight: '600' }}>
+                    통과 {passCount}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ color: colors.error, fontSize: 13, fontWeight: '600' }}>
+                    차단 {blockCount}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* LLM 진단 */}
+            {regime?.diagnosis && (
+              <View style={{
+                backgroundColor: colors.elevated,
+                borderRadius: 8,
+                padding: 12,
+                marginBottom: 12,
+              }}>
+                <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>LLM 시장 진단</Text>
+                <Text style={{ color: colors.foreground, fontSize: 12, lineHeight: 18 }}>
+                  {regime.diagnosis}
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+
+        {/* 수동 실행 버튼 */}
+        <View style={{
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          paddingTop: 12,
+          marginTop: 4,
+        }}>
+          <Text style={{ color: colors.primaryLight, fontSize: 13, fontWeight: '700', marginBottom: 10 }}>
+            수동 실행
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              disabled={executingSignals}
+              onPress={handleExecuteSignals}
+              style={{
+                flex: 1,
+                backgroundColor: colors.elevated,
+                borderRadius: 8,
+                paddingVertical: 12,
+                alignItems: 'center',
+                opacity: executingSignals ? 0.6 : 1,
+              }}
+            >
+              {executingSignals ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>신호 실행</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              disabled={runningScan}
+              onPress={handleRunScan}
+              style={{
+                flex: 1,
+                backgroundColor: colors.elevated,
+                borderRadius: 8,
+                paddingVertical: 12,
+                alignItems: 'center',
+                opacity: runningScan ? 0.6 : 1,
+              }}
+            >
+              {runningScan ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>스캔 실행</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // --- 앱 정보 ---
 
 function AppInfo({ colors }: { colors: ThemeColors }) {
@@ -479,6 +685,7 @@ export default function SettingsScreen() {
         colors={colors}
       />
       <CurrentConfig config={config} isDemo={state.isDemo} colors={colors} />
+      <EngineStatusSection isDemo={state.isDemo} colors={colors} />
       <DemoModeSection
         isDemo={state.isDemo}
         onToggle={handleDemoToggle}

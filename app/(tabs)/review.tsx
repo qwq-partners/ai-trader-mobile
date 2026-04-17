@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, FlatList, Alert } from 'react-native';
 import { useTradingData } from '@/lib/trading-data-provider';
 import { apiClient } from '@/lib/api-client';
@@ -736,6 +736,113 @@ function ChangeHistoryList({ history, expandedIndex, onToggle, colors }: {
 // 진화 이력 뷰
 // =============================================================================
 
+function PendingAdjustments({ adjustments, colors, onApplied }: {
+  adjustments: any[];
+  colors: ThemeColors;
+  onApplied: () => void;
+}) {
+  const [applying, setApplying] = useState<number | null>(null);
+
+  const handleApply = useCallback(async (adj: any, index: number) => {
+    Alert.alert(
+      '파라미터 적용',
+      `${STRATEGY_LABELS[adj.strategy] || adj.strategy}의 ${adj.parameter}를\n${String(adj.current)} → ${String(adj.suggested)}로 변경하시겠습니까?`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '적용',
+          style: 'destructive',
+          onPress: async () => {
+            setApplying(index);
+            try {
+              const result = await apiClient.applyEvolution({
+                strategy: adj.strategy,
+                parameter: adj.parameter,
+                new_value: adj.suggested,
+                reason: adj.reason || '모바일 수동 적용',
+              });
+              Alert.alert(
+                result.success ? '적용 완료' : '적용 실패',
+                result.message || (result.success ? '파라미터가 적용되었습니다.' : '적용 중 오류가 발생했습니다.'),
+              );
+              if (result.success) onApplied();
+            } catch (e: any) {
+              Alert.alert('오류', e?.message || '파라미터 적용에 실패했습니다.');
+            }
+            setApplying(null);
+          },
+        },
+      ],
+    );
+  }, [onApplied]);
+
+  if (!adjustments || adjustments.length === 0) return null;
+
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ fontSize: 15, fontWeight: '700', color: colors.foreground, marginHorizontal: 16, marginBottom: 8 }}>
+        대기 중 파라미터 조정
+      </Text>
+      {adjustments.map((adj: any, idx: number) => (
+        <View key={idx} style={{
+          backgroundColor: colors.surface,
+          borderRadius: 12,
+          padding: 16,
+          marginHorizontal: 16,
+          marginBottom: 8,
+          borderLeftWidth: 3,
+          borderLeftColor: colors.warning,
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <View style={{
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 4,
+              backgroundColor: colors.elevated,
+              marginRight: 8,
+            }}>
+              <Text style={{ color: colors.primaryLight, fontSize: 10, fontWeight: '600' }}>
+                {STRATEGY_LABELS[adj.strategy] || adj.strategy}
+              </Text>
+            </View>
+            <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600', flex: 1 }}>
+              {adj.parameter}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ color: colors.muted, fontSize: 13 }}>{String(adj.current ?? adj.as_is ?? '-')}</Text>
+            <Text style={{ color: colors.primary, fontSize: 13, marginHorizontal: 8 }}>{'\u2192'}</Text>
+            <Text style={{ color: colors.info, fontSize: 13, fontWeight: '700' }}>{String(adj.suggested ?? adj.to_be ?? '-')}</Text>
+          </View>
+          {adj.reason ? (
+            <Text style={{ color: colors.muted, fontSize: 11, lineHeight: 16, marginBottom: 10 }}>
+              {adj.reason}
+            </Text>
+          ) : null}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            disabled={applying === idx}
+            onPress={() => handleApply(adj, idx)}
+            style={{
+              backgroundColor: applying === idx ? colors.elevated : colors.primary,
+              borderRadius: 8,
+              paddingVertical: 10,
+              alignItems: 'center',
+              opacity: applying === idx ? 0.6 : 1,
+            }}
+          >
+            {applying === idx ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>적용</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function EvolutionHistoryView({ colors }: { colors: ThemeColors }) {
   const { state } = useTradingData();
   const [evolution, setEvolution] = useState<EvolutionData | null>(null);
@@ -771,9 +878,20 @@ function EvolutionHistoryView({ colors }: { colors: ThemeColors }) {
     return <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />;
   }
 
+  const pendingAdjustments = evolution?.parameter_adjustments?.filter(
+    (adj: any) => adj && (adj.suggested !== undefined || adj.to_be !== undefined)
+  ) ?? [];
+
   return (
     <View>
       <EvolutionSummary data={evolution} colors={colors} />
+      {!state.isDemo && pendingAdjustments.length > 0 && (
+        <PendingAdjustments
+          adjustments={pendingAdjustments}
+          colors={colors}
+          onApplied={loadEvolution}
+        />
+      )}
       <ChangeHistoryList
         history={history}
         expandedIndex={expandedIndex}
