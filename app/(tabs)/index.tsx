@@ -141,12 +141,18 @@ function PortfolioHero({ portfolio, colors }: { portfolio: PortfolioData | null;
 function RiskGauge({ risk, status, colors }: { risk: RiskData | null; status: StatusData | null; colors: ThemeColors }) {
   if (!risk || !status) return null;
 
+  // 일일 손실 한도 사용률 — initial_capital 분모 기준 (2026-04-18 엔진 일치)
   const dailyUsedPct = risk.daily_loss_limit_pct !== 0
     ? Math.min(100, Math.max(0, Math.abs(risk.daily_loss_pct / risk.daily_loss_limit_pct) * 100))
     : 0;
   const canTrade = risk.can_trade && status.running && !status.engine?.paused;
   const tradingColor = canTrade ? colors.success : colors.error;
   const tradingText = canTrade ? '거래가능' : '중단';
+  // 웹 대시보드와 임계값 통일: >90% 빨강, >60% 주황, 그 외 초록
+  const gaugeColor = dailyUsedPct > 90 ? colors.error : dailyUsedPct > 60 ? colors.warning : colors.success;
+  const lossTextColor = risk.daily_loss_pct <= -4.5 ? colors.error
+    : risk.daily_loss_pct <= -3.0 ? colors.warning
+    : colors.foreground;
 
   return (
     <View style={{
@@ -163,19 +169,24 @@ function RiskGauge({ risk, status, colors }: { risk: RiskData | null; status: St
         padding: 12,
       }}>
         <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 4 }}>일일손실</Text>
-        <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: '600' }}>
+        <Text style={{ color: lossTextColor, fontSize: 13, fontWeight: '600' }}>
           {formatPct(risk.daily_loss_pct)} / {formatPct(risk.daily_loss_limit_pct, false)}
         </Text>
-        <View style={{
-          height: 4,
-          borderRadius: 2,
-          backgroundColor: colors.elevated,
-          marginTop: 6,
-        }}>
+        <View
+          accessibilityRole="progressbar"
+          accessibilityLabel="일일 손실 한도 사용률"
+          accessibilityValue={{ min: 0, max: 100, now: Math.round(dailyUsedPct) }}
+          style={{
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: colors.elevated,
+            marginTop: 6,
+          }}
+        >
           <View style={{
             height: 4,
             borderRadius: 2,
-            backgroundColor: dailyUsedPct > 80 ? colors.error : dailyUsedPct > 50 ? colors.warning : colors.success,
+            backgroundColor: gaugeColor,
             width: `${Math.min(dailyUsedPct, 100)}%` as any,
           }} />
         </View>
@@ -215,6 +226,9 @@ const EXIT_STATE_COLORS: Record<string, { bg: string; text: string; label: strin
   monitoring: { bg: 'rgba(148,163,184,0.15)', text: '#94a3b8', label: '모니터링' },
   breakeven: { bg: 'rgba(96,165,250,0.15)', text: '#60a5fa', label: '본전이동' },
   trailing: { bg: 'rgba(52,211,153,0.15)', text: '#34d399', label: '트레일링' },
+  first: { bg: 'rgba(52,211,153,0.15)', text: '#34d399', label: '1차익절' },
+  second: { bg: 'rgba(52,211,153,0.18)', text: '#34d399', label: '2차익절' },
+  third: { bg: 'rgba(52,211,153,0.22)', text: '#34d399', label: '3차익절' },
   first_exit: { bg: 'rgba(167,139,250,0.15)', text: '#a78bfa', label: '1차익절' },
 };
 
@@ -223,15 +237,56 @@ const STRATEGY_LABELS: Record<string, string> = {
   sepa_trend: 'SEPA',
   theme_chasing: '테마',
   gap_and_go: '갭상승',
+  rsi2_reversal: 'RSI2',
+  strategic_swing: '스윙',
+  core_holding: '코어',
 };
 
+// 전략별 특수 뱃지 (웹 대시보드와 동등)
+const STRATEGY_BADGE: Record<string, { label: string; fg: string; bg: string; border: string; title: string }> = {
+  core_holding:   { label: '코어', fg: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.35)', title: '코어홀딩: SL -15%, 트레일링 8%, 분할익절 미사용' },
+  theme_chasing:  { label: '테마', fg: '#f0abfc', bg: 'rgba(240,171,252,0.10)', border: 'rgba(240,171,252,0.35)', title: '테마추종: 최대 3일 보유, 14:00 이후 신규진입 차단' },
+  gap_and_go:     { label: '갭',   fg: '#22d3ee', bg: 'rgba(34,211,238,0.08)',  border: 'rgba(34,211,238,0.30)', title: '갭상승: 09:20~10:30 한정, VWAP 이탈 시 청산' },
+  rsi2_reversal:  { label: 'RSI2', fg: '#34d399', bg: 'rgba(52,211,153,0.08)',  border: 'rgba(52,211,153,0.30)', title: 'RSI(2) 과매도 반전: bear 체제 차단, ATR×2 손절' },
+};
+
+/** 다음 TP / SL 거리 계산 — 웹 renderStageProjection과 동등 */
+function getStageProjection(position: PositionData, netPct: number) {
+  const isCore = position.strategy === 'core_holding';
+  const stage = position.exit_state?.stage || 'none';
+  const es = position.exit_state || {};
+  const tp1 = (es as any).first_exit_pct ?? 5.0;
+  const tp2 = (es as any).second_exit_pct ?? 15.0;
+  const tp3 = (es as any).third_exit_pct ?? 25.0;
+  const sl  = -((es as any).stop_loss_pct ?? (isCore ? 15.0 : 5.0));
+  let nextLabel = 'TP1', nextPct = tp1;
+  if (stage === 'first')  { nextLabel = 'TP2'; nextPct = tp2; }
+  else if (stage === 'second') { nextLabel = 'TP3'; nextPct = tp3; }
+  else if (stage === 'third' || stage === 'trailing') { nextLabel = 'TRAIL'; nextPct = tp3; }
+  const toTp = nextPct - netPct;
+  const toSl = netPct - sl;
+  const range = nextPct - sl;
+  const fillPct = range > 0 ? Math.max(0, Math.min(100, ((netPct - sl) / range) * 100)) : 50;
+  return { nextLabel, nextPct, sl, toTp, toSl, fillPct };
+}
+
 function PositionCard({ position, onPress, colors }: { position: PositionData; onPress: () => void; colors: ThemeColors }) {
-  // 수수료 포함 순손익 기준으로 색상 결정 (실제 손익 기준)
-  const netPnl = position.unrealized_pnl_net ?? position.unrealized_pnl;
-  const netPct = position.unrealized_pnl_net_pct ?? position.unrealized_pnl_pct;
+  // 수수료 포함 순손익 + NaN 가드 (웹 P0-4 동등)
+  const _rawPnl = position.unrealized_pnl_net ?? position.unrealized_pnl;
+  const _rawPct = position.unrealized_pnl_net_pct ?? position.unrealized_pnl_pct;
+  const netPnl = (typeof _rawPnl === 'number' && isFinite(_rawPnl)) ? _rawPnl : 0;
+  const netPct = (typeof _rawPct === 'number' && isFinite(_rawPct)) ? _rawPct : 0;
   const pnlColor = netPnl >= 0 ? colors.profit : colors.loss;
   const exitStage = position.exit_state?.stage || 'none';
   const exitState = EXIT_STATE_COLORS[exitStage] || EXIT_STATE_COLORS.none;
+
+  // 전략 특수 뱃지 (웹 동등)
+  const stratBadge = STRATEGY_BADGE[position.strategy || ''];
+
+  // 청산단계 projection (P0-1 + Impact1)
+  const proj = getStageProjection(position, netPct);
+  const slClose = proj.toSl < 1.0;
+  const tpClose = proj.toTp < 1.0 && proj.toTp > -1.0;
 
   return (
     <TouchableOpacity
@@ -255,12 +310,28 @@ function PositionCard({ position, onPress, colors }: { position: PositionData; o
       <View style={{ flex: 1, padding: 16 }}>
         {/* 상단: 종목명 + 수익률 */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12, flexWrap: 'wrap' }}>
             <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: '700' }}>
               {position.name}
             </Text>
+            {/* 전략 특수 뱃지 (코어/테마/갭/RSI2) — 웹과 동등 */}
+            {stratBadge && (
+              <View style={{
+                marginLeft: 6,
+                paddingHorizontal: 5,
+                paddingVertical: 1,
+                borderRadius: 3,
+                backgroundColor: stratBadge.bg,
+                borderWidth: 1,
+                borderColor: stratBadge.border,
+              }}>
+                <Text style={{ color: stratBadge.fg, fontSize: 9, fontWeight: '700', letterSpacing: 0.5 }}>
+                  {stratBadge.label}
+                </Text>
+              </View>
+            )}
             <View style={{
-              marginLeft: 8,
+              marginLeft: 6,
               paddingHorizontal: 6,
               paddingVertical: 2,
               borderRadius: 4,
@@ -302,6 +373,31 @@ function PositionCard({ position, onPress, colors }: { position: PositionData; o
           }}>
             <Text style={{ color: exitState.text, fontSize: 10, fontWeight: '600' }}>
               {exitState.label}
+            </Text>
+          </View>
+        </View>
+
+        {/* P0-1 + Impact1: 청산단계 projection 미니바 + SL/TP 거리 */}
+        <View style={{ marginTop: 8 }}>
+          <View style={{
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: colors.elevated,
+            overflow: 'hidden',
+          }}>
+            <View style={{
+              height: 4,
+              backgroundColor: pnlColor,
+              width: `${proj.fillPct}%` as any,
+              borderRadius: 2,
+            }} />
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 3 }}>
+            <Text style={{ fontSize: 10, color: slClose ? colors.error : colors.muted, fontVariant: ['tabular-nums'] }}>
+              SL +{proj.toSl.toFixed(1)}%p
+            </Text>
+            <Text style={{ fontSize: 10, color: tpClose ? colors.success : colors.muted, fontVariant: ['tabular-nums'] }}>
+              {proj.toTp >= 0 ? `${proj.nextLabel} -${proj.toTp.toFixed(1)}%p` : `${proj.nextLabel} ✓`}
             </Text>
           </View>
         </View>
