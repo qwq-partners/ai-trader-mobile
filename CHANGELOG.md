@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-04-18 — v1.5.0 (UI/UX 전면 개선)
+
+### feat: 포지션 카드 Projection + 전략 특수 배지
+- **PositionCard**: 청산단계 projection 미니바 신설
+  - SL ~ 다음 TP 구간 내 현재 위치 시각화 (pnl 컬러)
+  - "SL +X%p / TP1 -X%p" 라벨 — 근접 시 자동 경고색
+  - 웹 대시보드 `renderStageProjection()`과 동일 로직
+- **STRATEGY_BADGE** 신설 (4종):
+  - 코어 (SL -15%, 트레일링 8%, 분할익절 미사용)
+  - 테마 (최대 3일 보유, 14:00 이후 신규 차단)
+  - 갭 (09:20~10:30 한정, VWAP 이탈 시 청산)
+  - RSI2 (bear 체제 차단, ATR×2 손절)
+- **STRATEGY_LABELS** 보완: rsi2_reversal/strategic_swing/core_holding 추가
+- **EXIT_STATE_COLORS**에 first/second/third 단계 추가 (웹 동등)
+
+### feat: 일일손실 게이지 임계값 웹과 통일
+- **RiskGauge**:
+  - 임계값 50/80 → **60/90%** (웹 대시보드와 동일 — initial_capital 분모 기준)
+  - 일일 손실 텍스트 색상 단계 (-3%/-4.5%)
+  - `accessibilityRole="progressbar"` + `accessibilityValue` 추가
+
+### fix: NaN 가드
+- `unrealized_pnl_net` 에 `isFinite` 체크 추가 — 백엔드 스키마 변경 시 UI 깨짐 방지
+
+### 엔진 측 동반 개선 (qwq-ai-trader 커밋 925cdb0 + ddb0a41)
+- 일일 손실 % 분모 `initial_capital`로 통일 — 앱 표시값과 엔진 차단 기준 일치
+- RSI2 bear 체제 진입 차단 (Connors 원전 규칙)
+- `strategy_allocation` rsi2 40→25, sepa 10→25 과적합 롤백
+
+### 빌드
+- Expo SDK 54.0.33 / React Native 0.81.5 / versionCode 6→7
+
+---
+
 ## 2026-03-26
 ### feat: 정산 탭 + 테마 탭 신규 추가
 - **settlement.tsx**: 일일 정산 탭 신규 — 날짜 선택, 요약 카드(실현/미실현/총손익/승패), 매도/매수 체결 목록, 보유종목 현황
